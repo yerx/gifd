@@ -13,6 +13,7 @@ import { createPreUpdateConfigSnapshot } from "../../config/backup-rotation.js";
 import {
   assertConfigWriteAllowedInCurrentMode,
   mutateConfigFileWithRetry,
+  parseConfigJson5,
   readConfigFileSnapshot,
   resolveGatewayPort,
 } from "../../config/config.js";
@@ -136,6 +137,7 @@ const POST_CORE_UPDATE_CHANNEL_ENV = "OPENCLAW_UPDATE_POST_CORE_CHANNEL";
 const POST_CORE_UPDATE_REQUESTED_CHANNEL_ENV = "OPENCLAW_UPDATE_POST_CORE_REQUESTED_CHANNEL";
 const POST_CORE_UPDATE_RESULT_PATH_ENV = "OPENCLAW_UPDATE_POST_CORE_RESULT_PATH";
 const POST_CORE_UPDATE_INSTALL_RECORDS_PATH_ENV = "OPENCLAW_UPDATE_POST_CORE_INSTALL_RECORDS_PATH";
+const POST_CORE_UPDATE_SOURCE_CONFIG_PATH_ENV = "OPENCLAW_UPDATE_POST_CORE_SOURCE_CONFIG_PATH";
 const POST_CORE_UPDATE_RESULT_POLL_MS = 100;
 const UPDATE_PARENT_SUPPORTS_DOCTOR_CONFIG_WRITE_ENV =
   "OPENCLAW_UPDATE_PARENT_SUPPORTS_DOCTOR_CONFIG_WRITE";
@@ -226,6 +228,55 @@ function normalizePluginInstallRecordMap(value: unknown): Record<string, PluginI
     }
   }
   return records;
+}
+
+function normalizeChannelConfigMap(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return value;
+}
+
+function restoreDroppedPreUpdateChannels(
+  snapshot: Awaited<ReturnType<typeof readConfigFileSnapshot>>,
+  preUpdateSourceConfig: OpenClawConfig | undefined,
+): {
+  snapshot: Awaited<ReturnType<typeof readConfigFileSnapshot>>;
+  changed: boolean;
+} {
+  if (!snapshot.valid || !preUpdateSourceConfig) {
+    return { snapshot, changed: false };
+  }
+  const preUpdateChannels = normalizeChannelConfigMap(preUpdateSourceConfig.channels);
+  if (!preUpdateChannels) {
+    return { snapshot, changed: false };
+  }
+
+  const postUpdateChannels = normalizeChannelConfigMap(snapshot.sourceConfig.channels) ?? {};
+  const restoredChannels = { ...postUpdateChannels };
+  let restored = false;
+  for (const [channelId, channelConfig] of Object.entries(preUpdateChannels)) {
+    if (restoredChannels[channelId] !== undefined) {
+      continue;
+    }
+    restoredChannels[channelId] = structuredClone(channelConfig);
+    restored = true;
+  }
+  if (!restored) {
+    return { snapshot, changed: false };
+  }
+
+  const nextConfig = {
+    ...snapshot.sourceConfig,
+    channels: restoredChannels,
+  } as OpenClawConfig;
+  return {
+    snapshot: {
+      ...createUpdatedConfigSnapshot(snapshot, nextConfig),
+      hash: snapshot.hash,
+    },
+    changed: true,
+  };
 }
 
 export async function collectMissingPluginInstallPayloads(params: {
@@ -1177,6 +1228,7 @@ export async function updatePluginsAfterCoreUpdate(params: {
   root: string;
   channel: "stable" | "beta" | "dev";
   configSnapshot: Awaited<ReturnType<typeof readConfigFileSnapshot>>;
+  configChanged?: boolean;
   opts: UpdateCommandOptions;
   timeoutMs: number;
   pluginInstallRecords?: Record<string, PluginInstallRecord>;
@@ -1227,7 +1279,7 @@ export async function updatePluginsAfterCoreUpdate(params: {
   let pluginConfig = syncResult.config;
   const integrityDrifts: PostCorePluginUpdateResult["integrityDrifts"] = [];
   const pluginUpdateOutcomes: PluginUpdateOutcome[] = [];
-  let pluginsChanged = syncResult.changed;
+  let pluginsChanged = syncResult.changed || params.configChanged === true;
   let npmPluginsChanged = false;
 
   const onPluginIntegrityDrift = async (drift: PluginUpdateIntegrityDriftParams) => {
@@ -1767,6 +1819,7 @@ async function runPostCorePluginUpdate(params: {
   root: string;
   channel: "stable" | "beta" | "dev";
   configSnapshot: Awaited<ReturnType<typeof readConfigFileSnapshot>>;
+  configChanged?: boolean;
   opts: UpdateCommandOptions;
   timeoutMs: number;
   pluginInstallRecords?: Record<string, PluginInstallRecord>;
@@ -1775,6 +1828,7 @@ async function runPostCorePluginUpdate(params: {
     root: params.root,
     channel: params.channel,
     configSnapshot: params.configSnapshot,
+    configChanged: params.configChanged,
     opts: params.opts,
     timeoutMs: params.timeoutMs,
     pluginInstallRecords: params.pluginInstallRecords,
@@ -1826,6 +1880,7 @@ export async function updateFinalizeCommand(opts: UpdateFinalizeOptions): Promis
 
   const root = await resolveUpdateRoot();
   let configSnapshot = await readConfigFileSnapshot({ skipPluginValidation: true });
+  const preFinalizeSourceConfig = configSnapshot.valid ? configSnapshot.sourceConfig : undefined;
   const requestedChannel = normalizeUpdateChannel(opts.channel);
   if (opts.channel && !requestedChannel) {
     defaultRuntime.error(`--channel must be "stable", "beta", or "dev" (got "${opts.channel}")`);
@@ -1857,6 +1912,8 @@ export async function updateFinalizeCommand(opts: UpdateFinalizeOptions): Promis
         requestedChannel,
       });
     }
+    const restoredConfig = restoreDroppedPreUpdateChannels(configSnapshot, preFinalizeSourceConfig);
+    configSnapshot = restoredConfig.snapshot;
     const postDoctorStoredChannel = configSnapshot.valid
       ? normalizeUpdateChannel(configSnapshot.config.update?.channel)
       : null;
@@ -1867,6 +1924,7 @@ export async function updateFinalizeCommand(opts: UpdateFinalizeOptions): Promis
       root,
       channel: postDoctorChannel,
       configSnapshot,
+      configChanged: restoredConfig.changed,
       opts: {
         json: opts.json,
         timeout: opts.timeout,
@@ -1935,10 +1993,10 @@ async function persistRequestedUpdateChannel(params: {
       };
     },
   });
-  return createUpdatedChannelSnapshot(mutation.snapshot, mutation.nextConfig);
+  return createUpdatedConfigSnapshot(mutation.snapshot, mutation.nextConfig);
 }
 
-function createUpdatedChannelSnapshot(
+function createUpdatedConfigSnapshot(
   snapshot: Awaited<ReturnType<typeof readConfigFileSnapshot>>,
   next: OpenClawConfig,
 ): Awaited<ReturnType<typeof readConfigFileSnapshot>> {
@@ -1990,6 +2048,16 @@ async function writePostCorePluginInstallRecordsFile(
   await fs.writeFile(filePath, `${JSON.stringify(records)}\n`, "utf-8");
 }
 
+async function writePostCoreSourceConfigFile(
+  filePath: string,
+  sourceConfig: OpenClawConfig | undefined,
+): Promise<void> {
+  if (!sourceConfig) {
+    return;
+  }
+  await fs.writeFile(filePath, `${JSON.stringify(sourceConfig)}\n`, "utf-8");
+}
+
 async function readPostCorePluginInstallRecordsFile(
   filePath: string | undefined,
 ): Promise<Record<string, PluginInstallRecord> | undefined> {
@@ -2002,6 +2070,33 @@ async function readPostCorePluginInstallRecordsFile(
   } catch {
     return undefined;
   }
+}
+
+async function readPostCoreSourceConfigFile(
+  filePath: string | undefined,
+): Promise<OpenClawConfig | undefined> {
+  if (!filePath) {
+    return undefined;
+  }
+  try {
+    const parsed = parseConfigJson5(await fs.readFile(filePath, "utf-8"));
+    return parsed.ok && isRecord(parsed.parsed)
+      ? (parsed.parsed as OpenClawConfig)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readPostCoreSourceConfigForResume(params: {
+  sourceConfigPath: string | undefined;
+  currentConfigPath: string;
+}): Promise<OpenClawConfig | undefined> {
+  const sourceConfigPath = params.sourceConfigPath?.trim();
+  if (sourceConfigPath) {
+    return await readPostCoreSourceConfigFile(sourceConfigPath);
+  }
+  return await readPostCoreSourceConfigFile(`${params.currentConfigPath}.pre-update`);
 }
 
 async function readPostCorePluginUpdateResultFile(
@@ -2066,6 +2161,7 @@ async function continuePostCoreUpdateInFreshProcess(params: {
   requestedChannel: "stable" | "beta" | "dev" | null;
   opts: UpdateCommandOptions;
   pluginInstallRecords: Record<string, PluginInstallRecord>;
+  preUpdateSourceConfig?: OpenClawConfig;
 }): Promise<{ resumed: boolean; pluginUpdate?: PostCorePluginUpdateResult }> {
   const entryPath = await resolveGatewayInstallEntrypoint(params.root);
   if (!entryPath) {
@@ -2088,9 +2184,11 @@ async function continuePostCoreUpdateInFreshProcess(params: {
   const resultDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-update-post-core-"));
   const resultPath = path.join(resultDir, "plugins.json");
   const installRecordsPath = path.join(resultDir, "plugin-install-records.json");
+  const sourceConfigPath = path.join(resultDir, "source-config.json");
 
   try {
     await writePostCorePluginInstallRecordsFile(installRecordsPath, params.pluginInstallRecords);
+    await writePostCoreSourceConfigFile(sourceConfigPath, params.preUpdateSourceConfig);
     const childStdio = resolvePostCoreUpdateChildStdio();
     const child = spawn(resolveNodeRunner(), argv, {
       stdio: childStdio,
@@ -2103,6 +2201,9 @@ async function continuePostCoreUpdateInFreshProcess(params: {
           : {}),
         [POST_CORE_UPDATE_RESULT_PATH_ENV]: resultPath,
         [POST_CORE_UPDATE_INSTALL_RECORDS_PATH_ENV]: installRecordsPath,
+        ...(params.preUpdateSourceConfig
+          ? { [POST_CORE_UPDATE_SOURCE_CONFIG_PATH_ENV]: sourceConfigPath }
+          : {}),
       },
     });
     // When piped, relay child output to the parent process so terminal output is preserved.
@@ -2291,11 +2392,20 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
       configSnapshot: await readConfigFileSnapshot({ skipPluginValidation: true }),
       requestedChannel: postCoreRequestedChannel,
     });
+    const preUpdateSourceConfig = await readPostCoreSourceConfigForResume({
+      sourceConfigPath: process.env[POST_CORE_UPDATE_SOURCE_CONFIG_PATH_ENV],
+      currentConfigPath: postCoreConfigSnapshot.path,
+    });
+    const restoredPostCoreConfig = restoreDroppedPreUpdateChannels(
+      postCoreConfigSnapshot,
+      preUpdateSourceConfig,
+    );
 
     const pluginUpdate = await runPostCorePluginUpdate({
       root,
       channel: postCoreUpdateChannel,
-      configSnapshot: postCoreConfigSnapshot,
+      configSnapshot: restoredPostCoreConfig.snapshot,
+      configChanged: restoredPostCoreConfig.changed,
       opts,
       timeoutMs: updateStepTimeoutMs,
       pluginInstallRecords: await readPostCorePluginInstallRecordsFile(postCoreInstallRecordsPath),
@@ -2709,6 +2819,7 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
       requestedChannel,
       opts,
       pluginInstallRecords: preUpdatePluginInstallRecords,
+      preUpdateSourceConfig: configSnapshot.valid ? configSnapshot.sourceConfig : undefined,
     });
     pluginsUpdatedInFreshProcess = freshProcessResult.resumed;
     postCorePluginUpdate = freshProcessResult.pluginUpdate;
@@ -2721,10 +2832,16 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
         requestedChannel,
       });
     }
+    const restoredConfig = restoreDroppedPreUpdateChannels(
+      postUpdateConfigSnapshot,
+      configSnapshot.valid ? configSnapshot.sourceConfig : undefined,
+    );
+    postUpdateConfigSnapshot = restoredConfig.snapshot;
     postCorePluginUpdate = await runPostCorePluginUpdate({
       root: postUpdateRoot,
       channel,
       configSnapshot: postUpdateConfigSnapshot,
+      configChanged: restoredConfig.changed,
       opts,
       timeoutMs: updateStepTimeoutMs,
       pluginInstallRecords: preUpdatePluginInstallRecords,
