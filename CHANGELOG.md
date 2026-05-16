@@ -17,6 +17,7 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+- Gateway/diagnostics: persist a redacted stability bundle at critical memory pressure with V8 heap, cgroup, active-resource, and redacted large session-file evidence before an OOM kill can erase context. Fixes #82518.
 - TUI: update the displayed model in real time when an auto-fallback resolution swaps in a different model mid-turn, so the status line reflects the actual model handling the run. Fixes #82296. Thanks @giodl73-repo.
 - Agents/sessions: preserve fresh post-compaction token snapshots across stale usage updates, preventing repeated auto-compaction after every message. Fixes #82576. (#82578) Thanks @njuboy11.
 - Agents/OpenAI Responses: log redacted diagnostics for detail-less `response.failed` events while preserving failed response ids, so operators can correlate provider-side failures. Fixes #82558.
