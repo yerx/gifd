@@ -243,3 +243,14 @@ extensions/**/.openclaw-runtime-deps-stamp.json
 /.opengrep-out/
 /.crabbox-artifacts
 .comux*
+
+# === Gifd additions (GroundWork apps) ===
+apps/groundwork-desktop/.staging/
+apps/groundwork-desktop/dist/
+apps/groundwork-desktop/release/
+apps/groundwork-desktop/*.dmg
+apps/groundwork-web/.next/
+apps/groundwork-web/out/
+apps/groundwork-server/data/*.db
+apps/groundwork-server/data/*.db-shm
+apps/groundwork-server/data/*.db-wal

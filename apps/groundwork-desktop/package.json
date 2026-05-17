@@ -1,0 +1,25 @@
+{
+  "name": "desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "description": "GroundWork desktop application",
+  "author": "GroundWork",
+  "scripts": {
+    "build:electron": "tsc -p tsconfig.json",
+    "bundle:server": "node scripts/bundle-server.js",
+    "prepare:dist": "pnpm run bundle:server && node scripts/copy-native-deps.js",
+    "build:all": "pnpm run build:electron && pnpm run prepare:dist",
+    "start": "electron dist/main.js",
+    "dev": "tsc -p tsconfig.json && electron dist/main.js",
+    "dist": "electron-builder install-app-deps && electron-builder",
+    "rebuild-native": "electron-builder install-app-deps"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "esbuild": "^0.27.0",
+    "@types/node": "^20.11.5",
+    "typescript": "^5.3.3"
+  }
+}

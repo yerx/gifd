@@ -1,0 +1,169 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg: #fafaf9;
+    --color-sidebar: #1c1917;
+    --color-sidebar-text: #e7e5e4;
+    --color-sidebar-hover: #292524;
+    --color-sidebar-active: #44403c;
+    --color-accent: #3b82f6;
+    --color-text: #1c1917;
+    --color-text-muted: #57534e;
+    --color-border: #e7e5e4;
+    --focus-ring-color: #3b82f6;
+    --focus-ring-offset: 2px;
+  }
+
+  body {
+    @apply bg-gw-stone-50 text-gw-stone-900 antialiased;
+  }
+
+  /* Feature 145: Global focus-visible styles for keyboard navigation */
+  *:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+    border-radius: 4px;
+  }
+
+  /* Remove focus outline for mouse users */
+  *:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Feature 141: Ensure accessible text selection contrast */
+  ::selection {
+    background-color: #3b82f6;
+    color: #ffffff;
+  }
+}
+
+@layer components {
+  /* --- Sidebar navigation --- */
+  .sidebar-nav-item {
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
+           text-gw-stone-300 hover:bg-gw-stone-700 hover:text-white
+           transition-colors duration-150 cursor-pointer;
+  }
+
+  .sidebar-nav-item:focus-visible {
+    @apply outline-none ring-2 ring-blue-400 ring-offset-2 ring-offset-gw-stone-900;
+  }
+
+  .sidebar-nav-item.active {
+    @apply bg-gw-stone-700 text-white;
+  }
+
+  .domain-chip {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium;
+  }
+
+  /* --- Buttons --- */
+
+  /* Feature 145: btn-primary with hover and focus-visible */
+  .btn-primary {
+    @apply px-4 py-2 bg-gw-green-600 text-white rounded-lg font-medium
+           hover:bg-gw-green-700 active:bg-gw-green-800
+           transition-all duration-150;
+  }
+
+  .btn-primary:focus-visible {
+    @apply outline-none ring-2 ring-gw-green-500 ring-offset-2;
+  }
+
+  /* Feature 145: btn-secondary with hover and focus-visible */
+  .btn-secondary {
+    @apply px-4 py-2 bg-gw-stone-200 text-gw-stone-700 rounded-lg font-medium
+           hover:bg-gw-stone-300 active:bg-gw-stone-400
+           transition-all duration-150;
+  }
+
+  .btn-secondary:focus-visible {
+    @apply outline-none ring-2 ring-gw-stone-400 ring-offset-2;
+  }
+
+  /* --- Cards --- */
+
+  /* Feature 145: card hover and focus states */
+  .card {
+    @apply bg-white rounded-xl border border-gw-stone-200 p-4 shadow-sm
+           transition-shadow duration-150;
+  }
+
+  .card:hover {
+    @apply shadow-md;
+  }
+
+  .card:focus-visible {
+    @apply outline-none ring-2 ring-blue-400 ring-offset-2;
+  }
+
+  /* --- Form inputs focus styles --- */
+
+  /* Feature 145: Enhanced focus states for inputs, selects, textareas */
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply outline-none ring-2 ring-gw-green-500 ring-offset-0 border-transparent;
+  }
+
+  /* --- Links --- */
+
+  /* Feature 145: Links focus visible state */
+  a:focus-visible {
+    @apply outline-none ring-2 ring-blue-400 ring-offset-2 rounded;
+  }
+
+  /* --- Skip-to-content link for keyboard nav (Feature 140) --- */
+  .skip-to-content {
+    @apply absolute -top-12 left-4 z-[100] px-4 py-2 bg-gw-green-600 text-white
+           font-medium text-sm rounded-lg shadow-lg
+           transition-all duration-200;
+  }
+
+  .skip-to-content:focus {
+    @apply top-4;
+  }
+
+  /* --- Loading skeleton animation (Feature 143) --- */
+  .skeleton {
+    @apply bg-gw-stone-200 rounded animate-pulse;
+  }
+
+  .skeleton-text {
+    @apply bg-gw-stone-200 rounded animate-pulse h-4;
+  }
+
+  .skeleton-text-sm {
+    @apply bg-gw-stone-200 rounded animate-pulse h-3;
+  }
+
+  .skeleton-heading {
+    @apply bg-gw-stone-200 rounded animate-pulse h-6;
+  }
+
+  .skeleton-card {
+    @apply bg-white rounded-xl border border-gw-stone-200 p-4 shadow-sm;
+  }
+
+  /* --- Error states (Feature 144) --- */
+  .error-card {
+    @apply bg-red-50 rounded-xl border border-red-200 p-6 text-center;
+  }
+
+  .error-message {
+    @apply text-red-600 text-sm font-medium;
+  }
+
+  .error-retry-btn {
+    @apply mt-4 px-4 py-2 bg-red-600 text-white rounded-lg font-medium
+           hover:bg-red-700 active:bg-red-800
+           transition-all duration-150;
+  }
+
+  .error-retry-btn:focus-visible {
+    @apply outline-none ring-2 ring-red-500 ring-offset-2;
+  }
+}

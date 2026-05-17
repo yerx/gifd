@@ -3,8 +3,13 @@ packages:
   - ui
   - packages/*
   - extensions/*
+  - apps/groundwork-web
+  - apps/groundwork-server
+  - apps/groundwork-desktop
 
-minimumReleaseAge: 2880
+# Gifd: disabled for dev convenience. OpenClaw uses 2880 (48hr supply-chain protection).
+# Re-enable for production/release builds. See BRANDING.md.
+minimumReleaseAge: 0
 
 minimumReleaseAgeExclude:
   - "@openclaw/fs-safe@0.2.4"
@@ -37,6 +42,8 @@ minimumReleaseAgeExclude:
   - "rolldown"
   - "sqlite-vec"
   - "sqlite-vec-*"
+  - "@grammyjs/types"
+  - "playwright-core"
 
 nodeLinker: hoisted
 blockExoticSubdeps: true
@@ -87,6 +94,8 @@ allowBuilds:
   tree-sitter-bash: false
   openclaw: true
   "@openclaw/proxyline": true
+  better-sqlite3: true
+  electron: true
 
 packageExtensions:
   "@earendil-works/pi-coding-agent":

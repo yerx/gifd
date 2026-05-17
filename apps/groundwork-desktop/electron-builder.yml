@@ -1,0 +1,29 @@
+appId: com.groundwork.desktop
+productName: GroundWork
+directories:
+  output: ../../release
+  buildResources: resources
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: .staging/server/index.js
+    to: app/server/index.js
+  - from: .staging/server/node_modules
+    to: app/server/node_modules
+    filter:
+      - "**/*"
+  - from: ../web/out
+    to: app/web/out
+    filter:
+      - "**/*"
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+    - target: dir
+  hardenedRuntime: false
+dmg:
+  artifactName: GroundWork-${version}.${ext}
+asar: true
+npmRebuild: true

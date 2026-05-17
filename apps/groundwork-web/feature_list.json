@@ -1,0 +1,2113 @@
+[
+  {
+    "category": "data-model",
+    "description": "Database initialization creates the domains table with all columns (id TEXT PK, name TEXT NOT NULL, color TEXT NOT NULL, icon TEXT, sort_order REAL, created_at, updated_at, deleted_at)",
+    "steps": [
+      "Step 1: Start the backend server",
+      "Step 2: Send GET /api/health or equivalent to confirm server is running",
+      "Step 3: Query the database schema for the domains table",
+      "Step 4: Verify columns: id (TEXT PK), name (TEXT NOT NULL), color (TEXT NOT NULL), icon (TEXT), sort_order (REAL DEFAULT 0.0), created_at (TEXT NOT NULL), updated_at (TEXT NOT NULL), deleted_at (TEXT)",
+      "Step 5: Verify the partial index idx_domains_sort exists on sort_order WHERE deleted_at IS NULL"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Database initialization creates the projects table with FK to domains and all columns including status CHECK constraint",
+    "steps": [
+      "Step 1: Query the database schema for the projects table",
+      "Step 2: Verify columns: id, domain_id (FK to domains), name, description, status (CHECK: active/someday/completed/archived), default_view (CHECK: list/kanban/timeline/materials), last_touched_at, last_context_note, deadline, sort_order, created_at, updated_at, deleted_at",
+      "Step 3: Verify index idx_projects_domain on (domain_id, sort_order) WHERE deleted_at IS NULL",
+      "Step 4: Verify index idx_projects_status on (status) WHERE deleted_at IS NULL",
+      "Step 5: Verify index idx_projects_last_touched on (last_touched_at) WHERE deleted_at IS NULL AND status = 'active'"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Database initialization creates the tasks table with all columns, FK to projects, recurrence fields, and CHECK constraints",
+    "steps": [
+      "Step 1: Query the database schema for the tasks table",
+      "Step 2: Verify columns: id, project_id (FK), title, status (CHECK: backlog/active/done/dropped), kanban_column, estimated_minutes, due_date, seasonal_window, depends_on (DEFAULT '[]'), sort_order, notes, completed_at, recurrence_rule, recurrence_parent_id (FK to tasks), created_at, updated_at, deleted_at",
+      "Step 3: Verify index idx_tasks_project on (project_id, sort_order) WHERE deleted_at IS NULL",
+      "Step 4: Verify index idx_tasks_status on (status) WHERE deleted_at IS NULL",
+      "Step 5: Verify index idx_tasks_due_date on (due_date) WHERE deleted_at IS NULL AND due_date IS NOT NULL",
+      "Step 6: Verify index idx_tasks_completed on (completed_at) WHERE deleted_at IS NULL AND completed_at IS NOT NULL"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Database initialization creates inbox_items, daily_plans, and time_blocks tables with correct schemas",
+    "steps": [
+      "Step 1: Query schema for inbox_items table \u2014 verify columns: id, type (CHECK: text/voice/photo), raw_text, audio_path, photo_path, ocr_text, quick_note, processed_at, processed_to_task_id, created_at, updated_at, deleted_at",
+      "Step 2: Verify index idx_inbox_unprocessed on (created_at) WHERE deleted_at IS NULL AND processed_at IS NULL",
+      "Step 3: Query schema for daily_plans table \u2014 verify columns: id, date (UNIQUE), available_minutes, buffer_percent, reflection_note, morning_ritual_completed_at, close_out_completed_at, created_at, updated_at, deleted_at",
+      "Step 4: Verify unique index idx_daily_plans_date on (date) WHERE deleted_at IS NULL",
+      "Step 5: Query schema for time_blocks table \u2014 verify columns: id, daily_plan_id (FK), domain_id (FK), start_time, end_time, theme, task_ids (DEFAULT '[]'), sort_order, created_at, updated_at, deleted_at",
+      "Step 6: Verify index idx_time_blocks_plan on (daily_plan_id, start_time) WHERE deleted_at IS NULL"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Database initialization creates task_events, tags, task_tags, and remaining tables (materials, attachments, seasonal_config, calendar_events, weekly_theme_templates, weekly_theme_blocks)",
+    "steps": [
+      "Step 1: Query schema for task_events table \u2014 verify columns: id, task_id (FK), event_type (CHECK constraint), old_value, new_value, occurred_at, daily_plan_id (FK), created_at, updated_at, deleted_at",
+      "Step 2: Query schema for tags table \u2014 verify: id, name (UNIQUE), color, sort_order, created_at, updated_at, deleted_at",
+      "Step 3: Query schema for task_tags junction table \u2014 verify: id, task_id (FK), tag_id (FK), created_at, updated_at, deleted_at with unique index on (task_id, tag_id)",
+      "Step 4: Query schema for materials table \u2014 verify all columns including blocks_tasks (DEFAULT '[]')",
+      "Step 5: Query schema for attachments table \u2014 verify polymorphic FKs (task_id, project_id, inbox_item_id, material_id)",
+      "Step 6: Query schema for seasonal_config \u2014 verify key (UNIQUE), value, year, notes",
+      "Step 7: Query schema for calendar_events \u2014 verify all columns including source CHECK and external_id",
+      "Step 8: Query schema for weekly_theme_templates and weekly_theme_blocks \u2014 verify template_id FK, day_of_week CHECK (1-7)"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Create a domain via POST /api/domains with ULID primary key, name, color, and icon",
+    "steps": [
+      "Step 1: Send POST /api/domains with body {name: 'W-2 Job', color: '#3B82F6', icon: 'briefcase'}",
+      "Step 2: Verify response status 201 and response contains id (ULID format), name, color, icon",
+      "Step 3: Verify id is a valid ULID (26 alphanumeric characters, time-sortable)",
+      "Step 4: Verify created_at and updated_at are set to ISO 8601 timestamps",
+      "Step 5: Send GET /api/domains and verify the new domain appears in the list"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Read all active domains via GET /api/domains, sorted by sort_order, excluding soft-deleted rows",
+    "steps": [
+      "Step 1: Create three domains with different sort_order values (1.0, 2.0, 3.0)",
+      "Step 2: Soft-delete the second domain (sort_order 2.0)",
+      "Step 3: Send GET /api/domains",
+      "Step 4: Verify only two domains returned, sorted by sort_order ascending",
+      "Step 5: Verify the soft-deleted domain is not in the results"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Update a domain's name, color, and icon via PATCH /api/domains/:id",
+    "steps": [
+      "Step 1: Create a domain with name 'Test Domain'",
+      "Step 2: Send PATCH /api/domains/:id with {name: 'Updated Domain', color: '#10B981'}",
+      "Step 3: Verify response shows updated values",
+      "Step 4: Verify updated_at timestamp changed from created_at",
+      "Step 5: Send GET /api/domains/:id and confirm changes persisted"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Soft-delete a domain via DELETE /api/domains/:id sets deleted_at instead of removing the row",
+    "steps": [
+      "Step 1: Create a domain",
+      "Step 2: Send DELETE /api/domains/:id",
+      "Step 3: Verify response indicates success",
+      "Step 4: Send GET /api/domains \u2014 verify domain does not appear in active list",
+      "Step 5: Query database directly to confirm row exists with non-null deleted_at"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Create a project via POST /api/projects with domain_id FK, name, status defaults, and default_view",
+    "steps": [
+      "Step 1: Create a domain first",
+      "Step 2: Send POST /api/projects with {domain_id, name: 'Greenhouse Build', description: 'Main greenhouse project'}",
+      "Step 3: Verify response has ULID id, status defaults to 'active', default_view defaults to 'list'",
+      "Step 4: Verify domain_id FK is set correctly",
+      "Step 5: Send GET /api/projects?domain_id=:id and verify project appears"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Create a task via POST /api/tasks with project_id FK, title, and verify defaults",
+    "steps": [
+      "Step 1: Create a domain and project",
+      "Step 2: Send POST /api/tasks with {project_id, title: 'Pour foundation footings'}",
+      "Step 3: Verify response has ULID id, status defaults to 'backlog', sort_order is set",
+      "Step 4: Verify depends_on defaults to '[]' (empty JSON array)",
+      "Step 5: Verify completed_at is NULL",
+      "Step 6: Send GET /api/tasks?project_id=:id and verify task appears"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Completing a task sets status to 'done' and populates completed_at with ISO 8601 timestamp",
+    "steps": [
+      "Step 1: Create a domain, project, and task",
+      "Step 2: Send PATCH /api/tasks/:id with {status: 'done'}",
+      "Step 3: Verify response shows status = 'done'",
+      "Step 4: Verify completed_at is set to a valid ISO 8601 timestamp",
+      "Step 5: Verify a task_event was logged with event_type = 'completed'"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Create an inbox item via POST /api/inbox with type='text' and raw_text",
+    "steps": [
+      "Step 1: Send POST /api/inbox with {type: 'text', raw_text: 'Check greenhouse lumber order'}",
+      "Step 2: Verify response has ULID id, type = 'text', processed_at = null",
+      "Step 3: Send GET /api/inbox?unprocessed=true and verify the item appears",
+      "Step 4: Verify the item's created_at is a valid ISO 8601 timestamp"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Task event is logged when a task is created, including event_type='created'",
+    "steps": [
+      "Step 1: Create a domain and project",
+      "Step 2: Create a task in the project",
+      "Step 3: Send GET /api/task-events?task_id=:id",
+      "Step 4: Verify at least one event with event_type = 'created' and occurred_at timestamp"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Soft-delete cascade: deleting a project also soft-deletes its child tasks and materials",
+    "steps": [
+      "Step 1: Create a domain, project, two tasks, and one material in the project",
+      "Step 2: Send DELETE /api/projects/:id to soft-delete the project",
+      "Step 3: Verify the project has deleted_at set",
+      "Step 4: Send GET /api/tasks?project_id=:id \u2014 verify no active tasks returned",
+      "Step 5: Query database to confirm child tasks have deleted_at set",
+      "Step 6: Query database to confirm child materials have deleted_at set"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Create a daily plan via POST /api/daily-plans with date, available_minutes, and buffer_percent",
+    "steps": [
+      "Step 1: Send POST /api/daily-plans with {date: '2026-02-22', available_minutes: 480, buffer_percent: 20}",
+      "Step 2: Verify response has ULID id, date is set, morning_ritual_completed_at is NULL",
+      "Step 3: Send GET /api/daily-plans?date=2026-02-22 and verify the plan exists",
+      "Step 4: Verify the UNIQUE constraint prevents creating a second plan for the same date"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Domains reorder via fractional indexing \u2014 PATCH sort_order with REAL values allows inserting between existing items",
+    "steps": [
+      "Step 1: Create three domains with sort_order 1.0, 2.0, 3.0",
+      "Step 2: Move the third domain between the first and second by setting sort_order to 1.5",
+      "Step 3: Send GET /api/domains",
+      "Step 4: Verify order is: domain1 (1.0), domain3 (1.5), domain2 (2.0)"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Task status CHECK constraint prevents invalid status values",
+    "steps": [
+      "Step 1: Create a domain, project, and task",
+      "Step 2: Attempt to PATCH task with {status: 'invalid_status'}",
+      "Step 3: Verify the server returns an error (400 or 422)",
+      "Step 4: Verify the task status remains unchanged"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "inbox",
+    "description": "Text capture via inline text field on Inbox screen \u2014 type text, press Enter, item appears in queue",
+    "steps": [
+      "Step 1: Navigate to the Inbox screen in the browser",
+      "Step 2: Locate the quick capture text field ('What's on your mind?')",
+      "Step 3: Click into the field and type 'Check greenhouse lumber order -- need 10ft not 8ft'",
+      "Step 4: Press Enter",
+      "Step 5: Verify the text field is cleared",
+      "Step 6: Verify a new item appears in the Unprocessed queue below",
+      "Step 7: Verify the item shows the captured text and a timestamp"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "inbox",
+    "description": "Global keyboard shortcut (Cmd+Shift+I) opens a lightweight capture overlay from any screen",
+    "steps": [
+      "Step 1: Navigate to the Projects screen",
+      "Step 2: Press Cmd+Shift+I (or the configured shortcut)",
+      "Step 3: Verify a capture overlay appears (not a full page navigation)",
+      "Step 4: Verify the overlay contains a single text field with placeholder text",
+      "Step 5: Verify the rest of the screen is dimmed but visible behind the overlay"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "inbox",
+    "description": "Capture overlay: typing text and pressing Enter saves to inbox, shows confirmation, and dismisses overlay",
+    "steps": [
+      "Step 1: Open the capture overlay via Cmd+Shift+I from any screen",
+      "Step 2: Type 'Buy dog food -- running low'",
+      "Step 3: Press Enter",
+      "Step 4: Verify a brief confirmation appears ('Captured' or similar)",
+      "Step 5: Verify the overlay dismisses and returns to the previous screen",
+      "Step 6: Navigate to the Inbox screen",
+      "Step 7: Verify the new item 'Buy dog food -- running low' appears in the unprocessed queue"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "inbox",
+    "description": "Capture overlay: pressing Escape closes the overlay without saving any item",
+    "steps": [
+      "Step 1: Note the current inbox unprocessed count",
+      "Step 2: Open the capture overlay via Cmd+Shift+I",
+      "Step 3: Type some text in the field",
+      "Step 4: Press Escape",
+      "Step 5: Verify the overlay closes",
+      "Step 6: Navigate to Inbox and verify the count has not changed \u2014 no item was created"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "inbox",
+    "description": "Inbox screen displays unprocessed items in FIFO order (oldest first) with type icon, text preview, and timestamp",
+    "steps": [
+      "Step 1: Create three inbox items via the API with different timestamps",
+      "Step 2: Navigate to the Inbox screen",
+      "Step 3: Verify all three items appear in the Unprocessed section",
+      "Step 4: Verify items are ordered oldest first (FIFO \u2014 first captured, first shown)",
+      "Step 5: Verify each item shows a type icon (Aa for text), text preview, and timestamp"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "inbox",
+    "description": "Inbox badge count on sidebar shows number of unprocessed items and updates in real-time",
+    "steps": [
+      "Step 1: Navigate to any screen and observe the Inbox badge count in the sidebar",
+      "Step 2: Note the current count (e.g., 0)",
+      "Step 3: Use the capture overlay (Cmd+Shift+I) to create a new inbox item",
+      "Step 4: Verify the badge count increments by 1",
+      "Step 5: Navigate to Inbox and process one item",
+      "Step 6: Verify the badge count decrements by 1"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "inbox",
+    "description": "Card-by-card processing flow: clicking 'Process All' presents unprocessed items one at a time with 5 GTD-style action buttons",
+    "steps": [
+      "Step 1: Create 3 unprocessed inbox items via the API",
+      "Step 2: Navigate to the Inbox screen",
+      "Step 3: Click 'Process All' button",
+      "Step 4: Verify a processing modal/view opens showing the first (oldest) item",
+      "Step 5: Verify 5 action buttons are visible: Create Task, Someday/Maybe, Reference, Do It Now, Delete",
+      "Step 6: Click 'Create Task' \u2014 verify domain/project picker appears",
+      "Step 7: Select a domain and project, set estimate to 30 minutes, click confirm",
+      "Step 8: Verify the item is marked as processed and the next item is presented",
+      "Step 9: Click 'Delete' on the second item \u2014 verify it's soft-deleted and next item appears",
+      "Step 10: Click 'Reference' on the third item \u2014 verify it's marked as processed",
+      "Step 11: Verify processing flow completes and returns to the Inbox screen",
+      "Step 12: Verify the unprocessed count is now 0"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "inbox",
+    "description": "Processing: 'Create Task' action creates a task in selected project and links inbox item via processed_to_task_id",
+    "steps": [
+      "Step 1: Create a domain and project via the API",
+      "Step 2: Create an inbox item with raw_text 'Write API tests'",
+      "Step 3: Navigate to Inbox and start processing",
+      "Step 4: Select 'Create Task' action",
+      "Step 5: Choose the domain and project from the picker",
+      "Step 6: Set estimated_minutes to 60",
+      "Step 7: Confirm task creation",
+      "Step 8: Verify inbox item now has processed_at set and processed_to_task_id pointing to the new task",
+      "Step 9: Navigate to the project and verify the new task exists with the correct title and estimate"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "inbox",
+    "description": "Processing: 'Delete' action soft-deletes the inbox item",
+    "steps": [
+      "Step 1: Create an inbox item via the API",
+      "Step 2: Navigate to Inbox and click on the item to process it",
+      "Step 3: Click the 'Delete' action",
+      "Step 4: Verify the item disappears from the unprocessed queue",
+      "Step 5: Verify the inbox badge count decrements"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "inbox",
+    "description": "Processing: 'Do It Now' action starts a 2-minute timer for quick tasks",
+    "steps": [
+      "Step 1: Create an inbox item with raw_text 'Reply to quick email'",
+      "Step 2: Navigate to Inbox and start processing the item",
+      "Step 3: Click 'Do It Now' action",
+      "Step 4: Verify a 2-minute countdown timer appears",
+      "Step 5: Verify the item is marked as processed after the timer completes or user dismisses"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Domain CRUD via Settings or API: create a domain with name, color, icon and see it in the sidebar and Projects screen domain tabs",
+    "steps": [
+      "Step 1: Navigate to Settings > Domains (or use the API)",
+      "Step 2: Create a new domain named 'Homestead' with color '#F59E0B' and icon 'tractor'",
+      "Step 3: Verify the domain appears in the sidebar domain list with the correct color",
+      "Step 4: Navigate to the Projects screen",
+      "Step 5: Verify a domain tab for 'Homestead' appears with the orange color"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Domain: reorder domains via drag-and-drop in Settings, reflecting in sidebar navigation",
+    "steps": [
+      "Step 1: Create three domains: 'W-2 Job', 'Freelance', 'Homestead'",
+      "Step 2: Navigate to Settings > Domains",
+      "Step 3: Drag 'Homestead' above 'Freelance'",
+      "Step 4: Verify the sort order updates (fractional indexing)",
+      "Step 5: Navigate to a different screen and verify the sidebar domain list reflects the new order"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Domain: at least one domain must exist \u2014 prevent deleting the last domain",
+    "steps": [
+      "Step 1: Ensure only one domain exists",
+      "Step 2: Attempt to delete or archive the last domain",
+      "Step 3: Verify the system prevents deletion with an appropriate error message",
+      "Step 4: Verify the domain still exists"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Project CRUD: create a project within a domain with name, description, default_view, and optional deadline",
+    "steps": [
+      "Step 1: Navigate to the Projects screen",
+      "Step 2: Select a domain tab",
+      "Step 3: Click 'New Project'",
+      "Step 4: Enter name 'Greenhouse Build', description 'Main greenhouse construction project', leave default_view as 'list'",
+      "Step 5: Set a deadline date",
+      "Step 6: Click create/save",
+      "Step 7: Verify the project card appears under the selected domain",
+      "Step 8: Verify the project card shows the name, task count (0), and deadline"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Project list view shows tasks sorted by sort_order, grouped by status (Active/Backlog/Done)",
+    "steps": [
+      "Step 1: Create a project with several tasks in different statuses (2 backlog, 1 active, 1 done)",
+      "Step 2: Navigate to the project in list view",
+      "Step 3: Verify tasks are grouped by status sections",
+      "Step 4: Verify within each group, tasks are sorted by sort_order",
+      "Step 5: Verify completed tasks appear at the bottom with strikethrough styling"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Rapid sequential task entry: type title, press Enter, task is created immediately and focus moves to new empty input",
+    "steps": [
+      "Step 1: Navigate to a project's list view",
+      "Step 2: Click the task input field at the top",
+      "Step 3: Type 'Pour foundation footings' and press Enter",
+      "Step 4: Verify the task appears in the list immediately",
+      "Step 5: Verify the input field is cleared and focused for the next entry",
+      "Step 6: Type 'Frame south wall' and press Enter",
+      "Step 7: Verify the second task appears below the first",
+      "Step 8: Type 'Frame north wall' and press Enter",
+      "Step 9: Type 'Install ridge beam' and press Enter",
+      "Step 10: Verify all four tasks exist in the list in creation order",
+      "Step 11: Verify each task has status = 'backlog' and sequential sort_order values"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Drag-to-reorder tasks in list view updates sort_order via fractional indexing",
+    "steps": [
+      "Step 1: Create a project with 4 tasks in order: A, B, C, D",
+      "Step 2: Navigate to the project list view",
+      "Step 3: Drag task D between tasks A and B",
+      "Step 4: Verify the visual order is now A, D, B, C",
+      "Step 5: Refresh the page and verify the order persists"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Task: mark as done via checkbox click \u2014 sets status to 'done' and completed_at timestamp",
+    "steps": [
+      "Step 1: Navigate to a project with tasks in list view",
+      "Step 2: Click the checkbox next to an active task",
+      "Step 3: Verify the task visually shows as completed (strikethrough, moves to Done section)",
+      "Step 4: Verify via API that task status is 'done' and completed_at is set"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Task: set and clear due date, set estimated_minutes via task detail or inline editing",
+    "steps": [
+      "Step 1: Navigate to a project and click on a task to open its detail view",
+      "Step 2: Set a due date to '2026-03-15'",
+      "Step 3: Set estimated_minutes to 90",
+      "Step 4: Save and verify both fields are persisted",
+      "Step 5: Clear the due date (set to null)",
+      "Step 6: Verify due_date is now null while estimated_minutes remains 90"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Project cards on Projects screen show name, task counts, default view, deadline, and last-touched date with stale warnings (7+ days)",
+    "steps": [
+      "Step 1: Create a domain with two projects",
+      "Step 2: Add 5 tasks to project 1 (3 backlog, 2 done)",
+      "Step 3: Set project 2's last_touched_at to 10 days ago via API",
+      "Step 4: Navigate to the Projects screen",
+      "Step 5: Verify project 1 card shows: name, '3 active / 2 done', default view icon",
+      "Step 6: Verify project 2 card shows a stale warning indicator (7+ days)"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Domain tabs on Projects screen filter projects by domain, with an ALL tab showing projects grouped by domain",
+    "steps": [
+      "Step 1: Create two domains ('W-2 Job', 'Homestead') with 2 projects each",
+      "Step 2: Navigate to the Projects screen",
+      "Step 3: Verify an 'ALL' tab and individual domain tabs are visible",
+      "Step 4: Click the 'W-2 Job' tab \u2014 verify only W-2 Job projects are shown",
+      "Step 5: Click the 'Homestead' tab \u2014 verify only Homestead projects are shown",
+      "Step 6: Click 'ALL' \u2014 verify all projects shown, grouped by domain"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Project: update status to someday, completed, or archived",
+    "steps": [
+      "Step 1: Create a project with status 'active'",
+      "Step 2: Update status to 'someday' and verify via API",
+      "Step 3: Update status to 'active' and verify",
+      "Step 4: Update status to 'completed' and verify",
+      "Step 5: Update status to 'archived' and verify"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Creating a task in a project updates the project's last_touched_at timestamp",
+    "steps": [
+      "Step 1: Create a domain and project, note the project's last_touched_at",
+      "Step 2: Wait 1 second, then create a task in the project",
+      "Step 3: Fetch the project and verify last_touched_at has been updated to a more recent timestamp"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "cockpit",
+    "description": "Cockpit creates or retrieves today's daily plan when navigated to",
+    "steps": [
+      "Step 1: Ensure no daily plan exists for today",
+      "Step 2: Navigate to the Cockpit screen",
+      "Step 3: Verify the Cockpit loads and either creates a new daily plan or prompts the morning ritual",
+      "Step 4: Verify a daily_plans row exists for today's date"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "cockpit",
+    "description": "Morning ritual: 5-stage progress bar renders and stages navigate forward and back",
+    "steps": [
+      "Step 1: Navigate to the Cockpit with no ritual completed for today",
+      "Step 2: Verify the morning ritual flow appears with a progress bar showing 5 stages",
+      "Step 3: Verify Stage 1 (Review Yesterday) is displayed",
+      "Step 4: Complete Stage 1 and tap Next",
+      "Step 5: Verify Stage 2 is displayed and the progress bar advances",
+      "Step 6: Tap Back and verify Stage 1 is displayed again",
+      "Step 7: Navigate forward through remaining stages"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "cockpit",
+    "description": "Morning ritual Stage 1: Review Yesterday \u2014 shows completed and uncompleted tasks from yesterday with forced options",
+    "steps": [
+      "Step 1: Create a daily plan for yesterday with 2 time blocks containing 5 tasks total",
+      "Step 2: Mark 3 tasks as done and leave 2 incomplete",
+      "Step 3: Navigate to the Cockpit for today and start the morning ritual",
+      "Step 4: Verify Stage 1 is displayed with title 'Review Yesterday'",
+      "Step 5: Verify a 'Completed' column shows 3 tasks with green checkmarks and domain color badges",
+      "Step 6: Verify a 'Not Completed' column shows 2 tasks with amber indicators",
+      "Step 7: For the first uncompleted task, verify three options: 'Reschedule to today', 'Push to later this week', 'Return to project backlog'",
+      "Step 8: Select 'Reschedule to today' for the first task",
+      "Step 9: Verify a task_event is logged with event_type = 'rescheduled'",
+      "Step 10: Select 'Return to project backlog' for the second task",
+      "Step 11: Verify a task_event is logged for the second decision",
+      "Step 12: Tap 'Next' and verify progression to Stage 2"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "cockpit",
+    "description": "Morning ritual Stage 2: Check What's Due \u2014 shows tasks due today, overdue tasks, calendar events, and seasonal alerts",
+    "steps": [
+      "Step 1: Create 2 tasks with due_date = today in different domains",
+      "Step 2: Create 1 task with due_date = 3 days ago (overdue) in a third domain",
+      "Step 3: Create a calendar event for today (Team standup 9:00-9:30)",
+      "Step 4: Navigate to Cockpit, start ritual, advance to Stage 2",
+      "Step 5: Verify the due-today tasks are listed with their domain color badges",
+      "Step 6: Verify the overdue task is listed with an overdue indicator",
+      "Step 7: Verify the calendar event is shown with time details",
+      "Step 8: Acknowledge a due-today task to add it to today's plan",
+      "Step 9: Verify the overdue task can be rescheduled or returned to backlog",
+      "Step 10: Tap 'Next' and verify progression to Stage 3"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "cockpit",
+    "description": "Morning ritual: completing all stages sets daily_plans.morning_ritual_completed_at",
+    "steps": [
+      "Step 1: Navigate to Cockpit and complete all 5 morning ritual stages",
+      "Step 2: After tapping 'Finish Ritual', verify the Cockpit shows the day view (not the ritual flow)",
+      "Step 3: Query the API for today's daily plan",
+      "Step 4: Verify morning_ritual_completed_at is set to a valid ISO 8601 timestamp"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "cockpit",
+    "description": "Cockpit day view: after ritual completion, shows vertical timeline of time blocks with assigned tasks and capacity bar",
+    "steps": [
+      "Step 1: Complete the morning ritual with time blocks and assigned tasks",
+      "Step 2: Verify the Cockpit day view shows a vertical timeline",
+      "Step 3: Verify each time block shows start/end time, domain color, and assigned tasks",
+      "Step 4: Verify the capacity bar is visible showing committed vs. available minutes"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "onboarding",
+    "description": "First-time setup wizard launches automatically when no database/domains exist",
+    "steps": [
+      "Step 1: Start the app with a fresh/empty database",
+      "Step 2: Navigate to the app in the browser",
+      "Step 3: Verify the setup wizard launches automatically (not the main app screens)",
+      "Step 4: Verify the wizard shows a welcome message and 'Let's set up your system' button"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "onboarding",
+    "description": "Setup wizard Step 1: Create domains with name, color picker, icon selector, drag-to-reorder. Pre-filled suggestions available",
+    "steps": [
+      "Step 1: Start the setup wizard and reach the Domains screen",
+      "Step 2: Verify pre-filled domain suggestions are displayed (e.g., W-2 Job, Freelance, Apps, Homestead, Personal)",
+      "Step 3: Edit a domain name (e.g., change 'Apps' to 'Side Projects')",
+      "Step 4: Change a domain's color using the color picker and verify the preview updates",
+      "Step 5: Select an icon for a domain from the icon selector",
+      "Step 6: Click 'Add Domain' to add a new domain named 'Learning' with yellow color",
+      "Step 7: Verify the new domain appears in the list",
+      "Step 8: Delete one of the suggested domains by clicking its remove button",
+      "Step 9: Drag to reorder domains \u2014 place W-2 Job first and Personal last",
+      "Step 10: Verify the visual order matches the drag result",
+      "Step 11: Tap 'Continue' and verify navigation to Step 2"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "onboarding",
+    "description": "Setup wizard Step 2: Configure work hours per day with start/end time pickers and buffer slider",
+    "steps": [
+      "Step 1: Arrive at Step 2 of the setup wizard",
+      "Step 2: Verify a weekly grid is displayed with each day of the week",
+      "Step 3: Set Monday hours to 8:00 AM - 6:00 PM using the time pickers",
+      "Step 4: Set Tuesday through Friday to the same hours",
+      "Step 5: Set Saturday to 8:00 AM - 1:00 PM",
+      "Step 6: Toggle Sunday to 'OFF' and verify the time pickers are disabled for Sunday",
+      "Step 7: Verify the buffer slider defaults to 20%",
+      "Step 8: Adjust buffer to 25% and verify the weekly total updates",
+      "Step 9: Verify effective capacity is displayed (total hours minus buffer)",
+      "Step 10: Tap 'Continue' and verify navigation to Step 3"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "onboarding",
+    "description": "Setup wizard Step 3: Seasonal configuration is optional \u2014 toggle on to enter USDA zone and frost dates",
+    "steps": [
+      "Step 1: Arrive at Step 3 of the setup wizard",
+      "Step 2: Verify a toggle asks 'Do you manage seasonal or outdoor projects?'",
+      "Step 3: Toggle to 'Yes'",
+      "Step 4: Enter USDA planting zone '7b'",
+      "Step 5: Enter last frost date 'April 15'",
+      "Step 6: Enter first frost date 'October 20'",
+      "Step 7: Tap 'Continue' to proceed to Summary"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "onboarding",
+    "description": "Setup wizard: Summary confirmation screen shows all entered data and completing setup drops user into Cockpit",
+    "steps": [
+      "Step 1: Complete all 3 setup wizard steps with domains, work hours, and seasonal config",
+      "Step 2: Verify the Summary screen displays the domain count with color swatches",
+      "Step 3: Verify the weekly schedule summary shows hours per day",
+      "Step 4: Verify the buffer percentage is displayed",
+      "Step 5: Verify seasonal data (zone, frost dates) is shown",
+      "Step 6: Tap 'Start Using GroundWork'",
+      "Step 7: Verify all domains exist in the database via API",
+      "Step 8: Verify seasonal_config rows exist for last-frost-date, first-frost-date, planting-zone",
+      "Step 9: Verify a daily_plans row exists for today with correct available_minutes",
+      "Step 10: Verify a default weekly_theme_template was created",
+      "Step 11: Verify the user lands on the Cockpit screen with an empty-state welcome message"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "onboarding",
+    "description": "Setup wizard: toggling seasonal config OFF skips seasonal fields entirely and creates no seasonal_config rows",
+    "steps": [
+      "Step 1: Start the setup wizard and complete Steps 1-2",
+      "Step 2: On Step 3, leave the seasonal toggle as 'No' (or toggle it OFF)",
+      "Step 3: Tap Continue to the Summary screen",
+      "Step 4: Complete the wizard",
+      "Step 5: Query the API and verify no seasonal_config rows were created"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "settings",
+    "description": "Settings: Domain management \u2014 create, rename, recolor, re-icon, and archive domains with color picker",
+    "steps": [
+      "Step 1: Navigate to Settings > Domains",
+      "Step 2: Verify the existing domains are listed with their colors and icons",
+      "Step 3: Click 'Add Domain' to create a new domain named 'Learning' with color '#8B5CF6'",
+      "Step 4: Verify the new domain appears in the list with the correct color",
+      "Step 5: Click on the 'Learning' domain to edit it",
+      "Step 6: Change its name to 'Education'",
+      "Step 7: Change its color to '#06B6D4'",
+      "Step 8: Change its icon",
+      "Step 9: Save and verify changes are reflected in the sidebar domain list",
+      "Step 10: Navigate to the Projects screen and verify the domain tab shows the updated name and color"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "settings",
+    "description": "Settings: Work hours configuration \u2014 per-day start/end time pickers with OFF toggle and buffer slider (0-50%)",
+    "steps": [
+      "Step 1: Navigate to Settings > Work Hours",
+      "Step 2: Verify per-day time pickers are displayed for each day of the week",
+      "Step 3: Verify current values match what was set during onboarding",
+      "Step 4: Change Monday's hours from 8:00 AM - 6:00 PM to 9:00 AM - 5:00 PM",
+      "Step 5: Toggle Saturday to OFF",
+      "Step 6: Adjust buffer slider from 20% to 30%",
+      "Step 7: Verify the weekly total hours updates to reflect the changes",
+      "Step 8: Verify the effective capacity display updates (total - buffer%)",
+      "Step 9: Save settings and refresh the page",
+      "Step 10: Verify all changes persist after refresh"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "style",
+    "description": "Sidebar navigation renders with GroundWork branding, 5 screen icons (Inbox, Cockpit, Projects, Review, Settings), domain list with colors, and sync status",
+    "steps": [
+      "Step 1: Navigate to the app in the browser",
+      "Step 2: Verify the left sidebar is visible with GroundWork branding at the top",
+      "Step 3: Verify 5 navigation items are present: Inbox, Cockpit, Projects, Review, Settings",
+      "Step 4: Verify the domain list section shows all domains with their assigned colors",
+      "Step 5: Verify a sync status indicator (dot) is visible at the bottom of the sidebar",
+      "Step 6: Click each navigation item and verify the main content area changes"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "style",
+    "description": "Active navigation state highlights the current screen in the sidebar; domain color squares use the correct hex values from the domains table",
+    "steps": [
+      "Step 1: Navigate to the Inbox screen",
+      "Step 2: Verify the Inbox nav item is highlighted/active",
+      "Step 3: Navigate to Projects and verify Projects is now highlighted",
+      "Step 4: Create a domain with color '#EF4444' (red)",
+      "Step 5: Verify the domain's color square in the sidebar uses that exact red color"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "inbox",
+    "description": "Processing: 'Reference' action marks inbox item as processed without creating a task \u2014 filed for future reference only",
+    "steps": [
+      "Step 1: Create an inbox item with raw_text 'Interesting article about greenhouse ventilation'",
+      "Step 2: Navigate to Inbox and start processing the item",
+      "Step 3: Click the 'Reference' action",
+      "Step 4: Verify the item's processed_at is set",
+      "Step 5: Verify processed_to_task_id remains NULL (no task created)",
+      "Step 6: Verify the item no longer appears in the unprocessed queue"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "data-model",
+    "description": "Create and update time blocks for a daily plan via API \u2014 set start_time, end_time, domain_id, theme, and task_ids",
+    "steps": [
+      "Step 1: Create a domain and a daily plan for today",
+      "Step 2: Send POST /api/time-blocks with {daily_plan_id, domain_id, start_time: '09:00', end_time: '11:30', theme: 'Deep Work'}",
+      "Step 3: Verify response has ULID id, correct fields, and task_ids defaults to '[]'",
+      "Step 4: Create two tasks and update the time block's task_ids to include both task IDs",
+      "Step 5: Send GET /api/time-blocks?daily_plan_id=:id and verify the block with tasks"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "projects",
+    "description": "Task notes: add and edit rich text notes on a task via the task detail view",
+    "steps": [
+      "Step 1: Create a task in a project",
+      "Step 2: Open the task detail view",
+      "Step 3: Click the notes field and type 'Need to check lumber dimensions before cutting'",
+      "Step 4: Save the notes",
+      "Step 5: Verify the notes persist when reopening the task detail",
+      "Step 6: Edit the notes to add more text",
+      "Step 7: Verify the updated notes are saved"
+    ],
+    "passes": true,
+    "phase": 1
+  },
+  {
+    "category": "cockpit",
+    "description": "Morning ritual Stage 3: Scan stalled projects \u2014 shows active projects with last_touched_at older than 7 days with action options",
+    "steps": [
+      "Step 1: Create 3 projects: set last_touched_at to 12 days ago, 9 days ago, and 2 days ago respectively",
+      "Step 2: Navigate to Cockpit, start ritual, advance to Stage 3",
+      "Step 3: Verify only the 2 stalled projects (7+ days) are shown, not the recently touched one",
+      "Step 4: Verify each stalled project shows its name, domain, and last_touched_at date",
+      "Step 5: Verify action options: Acknowledge, Pause (set to someday), Add context note, Pull a task into today",
+      "Step 6: Select 'Acknowledge' for the first project \u2014 verify it's dismissed from the list",
+      "Step 7: Select 'Add context note' for the second project \u2014 enter 'Waiting on client feedback'",
+      "Step 8: Verify the context note is saved to the project's last_context_note",
+      "Step 9: Select 'Pull a task into today' \u2014 verify a task selector appears listing the project's tasks",
+      "Step 10: Select a task and verify it's added to today's available tasks",
+      "Step 11: Verify the project's last_touched_at is updated to now"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "cockpit",
+    "description": "Morning ritual Stage 4: Build Your Day \u2014 vertical timeline with themed blocks from weekly template, calendar events as locked bars, and task drag from Available Tasks panel",
+    "steps": [
+      "Step 1: Set up a weekly theme template with blocks for today's day of week",
+      "Step 2: Create calendar events for today",
+      "Step 3: Create tasks with due_date = today",
+      "Step 4: Navigate to Cockpit, start ritual, advance to Stage 4",
+      "Step 5: Verify time blocks are pre-populated from the weekly theme template",
+      "Step 6: Verify calendar events appear as locked gray bars overlaid on the timeline",
+      "Step 7: Verify an 'Available Tasks' panel shows tasks due today and rescheduled tasks",
+      "Step 8: Drag a task from the Available Tasks panel into a time block",
+      "Step 9: Verify the task appears within the block",
+      "Step 10: Verify the capacity bar updates to reflect newly committed minutes",
+      "Step 11: Drag another task into a different block",
+      "Step 12: Proceed to Stage 5"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "cockpit",
+    "description": "Morning ritual Stage 5: Process inbox \u2014 process remaining unprocessed inbox items before finishing ritual",
+    "steps": [
+      "Step 1: Create 2 unprocessed inbox items",
+      "Step 2: Navigate to Cockpit, advance through stages 1-4 to reach Stage 5",
+      "Step 3: Verify Stage 5 shows the inbox items for processing",
+      "Step 4: Process each item (create task or delete)",
+      "Step 5: Tap 'Finish Ritual'",
+      "Step 6: Verify morning_ritual_completed_at is set"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "cockpit",
+    "description": "Capacity bar calculation: available_minutes minus buffer% minus calendar event durations, showing green (<80%), amber (80-100%), red (>100%)",
+    "steps": [
+      "Step 1: Create a daily plan with available_minutes = 480 and buffer_percent = 20 (effective capacity = 384 min)",
+      "Step 2: Add a calendar event of 60 minutes (effective = 324 min)",
+      "Step 3: Navigate to the Build Your Day stage",
+      "Step 4: Verify the capacity bar shows 324 available minutes",
+      "Step 5: Assign tasks totaling 250 minutes \u2014 verify bar is green (77%)",
+      "Step 6: Assign more tasks to reach 300 minutes \u2014 verify bar turns amber (93%)",
+      "Step 7: Assign more tasks to exceed 324 minutes \u2014 verify bar turns red (>100%)",
+      "Step 8: Verify a warning prevents finishing the ritual while overcommitted"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "cockpit",
+    "description": "Quick Start option bypasses full ritual, clones template blocks, imports calendar events, auto-carries forward due tasks",
+    "steps": [
+      "Step 1: Set up a weekly theme template with blocks for today",
+      "Step 2: Create a calendar event for today",
+      "Step 3: Create a task with due_date = today",
+      "Step 4: Navigate to Cockpit (no ritual completed for today)",
+      "Step 5: Verify a 'Quick Start' link is visible",
+      "Step 6: Click 'Quick Start'",
+      "Step 7: Verify the daily plan is created with template blocks",
+      "Step 8: Verify calendar events are imported into capacity calculation",
+      "Step 9: Verify due tasks are auto-carried forward into the plan",
+      "Step 10: Verify an amber banner appears: 'Quick start \u2014 X items not reviewed...'",
+      "Step 11: Verify morning_ritual_completed_at is still NULL"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "cockpit",
+    "description": "Quick Start amber banner: clicking it opens condensed deferred ritual stages, completing them dismisses banner and sets morning_ritual_completed_at",
+    "steps": [
+      "Step 1: Use Quick Start to create a daily plan",
+      "Step 2: Verify the amber banner is visible",
+      "Step 3: Click the amber banner",
+      "Step 4: Verify a condensed view of deferred stages (Review Yesterday, Check Due, Process Inbox) appears",
+      "Step 5: Complete the deferred stages",
+      "Step 6: Verify the banner disappears",
+      "Step 7: Verify morning_ritual_completed_at is now set"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "cockpit",
+    "description": "Context switching card: when starting a domain's time block, shows last_context_note, last_touched_at, and first task details",
+    "steps": [
+      "Step 1: Set a project's last_context_note to 'Left off implementing the API endpoints'",
+      "Step 2: Assign a task from that project to a time block",
+      "Step 3: Click to start the time block",
+      "Step 4: Verify a context switching card appears showing the domain's context note",
+      "Step 5: Verify the card shows the project's last_touched_at timestamp",
+      "Step 6: Verify the first task's title and details (dependencies, estimates) are visible"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "cockpit",
+    "description": "Block execution: countdown timer per block, task checkboxes, and block-end notification",
+    "steps": [
+      "Step 1: Create a daily plan with a time block containing tasks",
+      "Step 2: Start the time block",
+      "Step 3: Verify a countdown timer is displayed showing remaining time",
+      "Step 4: Check off a task within the block",
+      "Step 5: Verify the task is marked as done",
+      "Step 6: Verify 'All tasks complete' options appear: pull another task, end block early, process inbox"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "cockpit",
+    "description": "Interruption logging: creates ad-hoc time block, recalculates remaining time, prompts rescheduling of displaced tasks",
+    "steps": [
+      "Step 1: Start a time block with tasks",
+      "Step 2: Trigger an interruption action (e.g., 'Log Interruption' button)",
+      "Step 3: Verify an ad-hoc time block is created",
+      "Step 4: Verify remaining time is recalculated",
+      "Step 5: Verify displaced tasks prompt for rescheduling"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "cockpit",
+    "description": "End-of-day close-out: lists today's tasks by status, forces decisions on incomplete tasks, saves reflection note, sets close_out_completed_at",
+    "steps": [
+      "Step 1: Create a daily plan with time blocks and tasks (some completed, some not)",
+      "Step 2: Trigger the end-of-day close-out flow",
+      "Step 3: Verify all today's tasks are listed by status (completed vs. incomplete)",
+      "Step 4: For each incomplete task, verify forced decision options appear (reschedule, return to backlog, drop)",
+      "Step 5: Make a decision for each incomplete task",
+      "Step 6: Verify a reflection note text field is available",
+      "Step 7: Enter a reflection note",
+      "Step 8: Verify a 'tomorrow preview' section is shown",
+      "Step 9: Complete the close-out",
+      "Step 10: Verify close_out_completed_at is set on today's daily plan",
+      "Step 11: Verify task_events are logged for each forced decision"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "projects",
+    "description": "Kanban view: tasks distributed across default columns (Backlog, In Progress, Done) based on task status",
+    "steps": [
+      "Step 1: Create a project with tasks in different statuses: 3 backlog, 2 active, 1 done",
+      "Step 2: Set the project's default_view to 'kanban'",
+      "Step 3: Navigate to the project",
+      "Step 4: Verify the kanban board shows three columns: Backlog, In Progress, Done",
+      "Step 5: Verify tasks are distributed correctly across columns",
+      "Step 6: Verify each column shows its task count"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "projects",
+    "description": "Kanban: drag a task between columns updates its status (e.g., Backlog to In Progress sets status to 'active')",
+    "steps": [
+      "Step 1: Navigate to a project in kanban view",
+      "Step 2: Drag a task card from 'Backlog' column to 'In Progress' column",
+      "Step 3: Verify the task card appears in the In Progress column",
+      "Step 4: Query the API to verify the task's status changed to 'active'",
+      "Step 5: Verify a task_event was logged with event_type = 'status_changed'"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "projects",
+    "description": "Kanban: custom column CRUD \u2014 add, rename, reorder, and remove custom columns",
+    "steps": [
+      "Step 1: Navigate to a project in kanban view",
+      "Step 2: Click 'Add Column' to create a custom column named 'In Review'",
+      "Step 3: Verify the new column appears on the board",
+      "Step 4: Drag a task into the custom column \u2014 verify task.kanban_column is set to 'In Review'",
+      "Step 5: Rename the column to 'Code Review'",
+      "Step 6: Verify the column header updates",
+      "Step 7: Remove the custom column \u2014 verify tasks in it move back to default columns"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "projects",
+    "description": "View switcher in project toolbar: switch between list, kanban, timeline, and materials views",
+    "steps": [
+      "Step 1: Navigate to a project",
+      "Step 2: Verify the view switcher toolbar shows 4 view options: list, kanban, timeline, materials",
+      "Step 3: Click 'Kanban' \u2014 verify the kanban board renders",
+      "Step 4: Click 'List' \u2014 verify the list view renders",
+      "Step 5: Verify switching views does not modify any task data"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "projects",
+    "description": "View switching persists default_view on the project \u2014 reopening the project loads the last-used view",
+    "steps": [
+      "Step 1: Navigate to a project (default view is 'list')",
+      "Step 2: Switch to 'kanban' view via the view switcher",
+      "Step 3: Navigate away to a different screen",
+      "Step 4: Navigate back to the project",
+      "Step 5: Verify the kanban view loads by default",
+      "Step 6: Query the API to confirm projects.default_view is 'kanban'"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "projects",
+    "description": "Completed tasks in list view show at the bottom with strikethrough styling and dimmed appearance",
+    "steps": [
+      "Step 1: Create a project with 3 active tasks and 2 completed tasks",
+      "Step 2: Navigate to the project in list view",
+      "Step 3: Verify completed tasks appear in a 'Done' section at the bottom",
+      "Step 4: Verify completed tasks have strikethrough text styling",
+      "Step 5: Verify completed tasks appear visually dimmed compared to active tasks"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "inbox",
+    "description": "Batch processing mode appears when inbox has 10+ items, groups by type, supports inline quick-actions",
+    "steps": [
+      "Step 1: Create 12 inbox items via API (8 text, 2 voice, 2 photo types)",
+      "Step 2: Navigate to the Inbox screen",
+      "Step 3: Verify a 'Batch Mode' button is visible",
+      "Step 4: Click 'Batch Mode'",
+      "Step 5: Verify items are grouped by type (Text, Voice, Photo)",
+      "Step 6: Verify inline quick-actions are available (e.g., assign domain, delete, star as someday)",
+      "Step 7: Use a quick-action to delete an item inline",
+      "Step 8: Verify the item disappears from the batch view"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "inbox",
+    "description": "Natural language parsing on text capture detects time estimates (e.g., '~45min', 'est 2 hours')",
+    "steps": [
+      "Step 1: Navigate to a project's task entry field",
+      "Step 2: Type 'Write API documentation ~45min' and press Enter",
+      "Step 3: Verify the system parses '~45min' and shows an editable chip with estimate = 45 minutes",
+      "Step 4: Confirm the chip \u2014 verify the task is created with estimated_minutes = 45",
+      "Step 5: Type 'Review codebase est 2 hours' and press Enter",
+      "Step 6: Verify the estimate chip shows 120 minutes"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "inbox",
+    "description": "Natural language parsing on text capture detects due dates (e.g., 'due Friday', 'by March 5')",
+    "steps": [
+      "Step 1: Navigate to a project's task entry field",
+      "Step 2: Type 'Submit invoice due Friday' and press Enter",
+      "Step 3: Verify the system parses 'due Friday' and shows an editable date chip",
+      "Step 4: Confirm the chip \u2014 verify the task is created with the correct due_date",
+      "Step 5: Type 'Prepare presentation by March 5' and press Enter",
+      "Step 6: Verify the date chip shows March 5, 2026"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "settings",
+    "description": "Weekly theme templates: create a new template with name and edit the block grid",
+    "steps": [
+      "Step 1: Navigate to Settings > Weekly Themes",
+      "Step 2: Click 'Create New Template'",
+      "Step 3: Name it 'Default Work Week'",
+      "Step 4: On the week grid, create a block for Monday 8:00-11:30",
+      "Step 5: Assign the block to a domain and set theme to 'Deep Work'",
+      "Step 6: Verify the block appears on the grid with the domain's color",
+      "Step 7: Save the template",
+      "Step 8: Verify the template appears in the templates list"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "settings",
+    "description": "Weekly theme templates: only one template active at a time \u2014 activating one deactivates the previous",
+    "steps": [
+      "Step 1: Create two templates: 'Default Week' and 'Crunch Mode'",
+      "Step 2: Activate 'Default Week'",
+      "Step 3: Verify is_active = 1 for Default Week and is_active = 0 for Crunch Mode",
+      "Step 4: Activate 'Crunch Mode'",
+      "Step 5: Verify is_active = 1 for Crunch Mode and is_active = 0 for Default Week"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "settings",
+    "description": "Weekly theme templates: full template lifecycle \u2014 create blocks for each day with domain theming, then morning ritual pre-populates from template",
+    "steps": [
+      "Step 1: Navigate to Settings > Weekly Themes",
+      "Step 2: Create a template 'Standard Week'",
+      "Step 3: Add blocks: Monday 8-11:30 'W-2 Deep Work', Monday 12-2 'W-2 Meetings', Monday 2:30-5 'Side Projects Coding'",
+      "Step 4: Add blocks for Tuesday through Friday",
+      "Step 5: Add Saturday 8-1 'Homestead Build'",
+      "Step 6: Leave Sunday empty",
+      "Step 7: Activate the template",
+      "Step 8: Navigate to Cockpit and start the morning ritual",
+      "Step 9: Advance to Stage 4 (Build Your Day)",
+      "Step 10: Verify time blocks are pre-populated from the template for today's day of week",
+      "Step 11: Verify block domain colors match the template configuration",
+      "Step 12: Modify a block (change end time) \u2014 verify the template itself is not affected"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "settings",
+    "description": "Weekly theme templates: duplicate a template creates a copy with 'Copy of' prefix",
+    "steps": [
+      "Step 1: Create a template 'Default Week' with several blocks",
+      "Step 2: Click 'Duplicate' on the template",
+      "Step 3: Verify a new template is created named 'Copy of Default Week'",
+      "Step 4: Verify all blocks from the original are copied to the duplicate"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "settings",
+    "description": "Weekly theme templates: delete a template removes it (non-active templates only)",
+    "steps": [
+      "Step 1: Create two templates and activate one",
+      "Step 2: Delete the non-active template",
+      "Step 3: Verify it's removed from the list",
+      "Step 4: Verify the active template remains unaffected"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "style",
+    "description": "Domain colors are consistent throughout the UI: sidebar domain squares, project cards, kanban headers, time block fills all use the domain's hex color",
+    "steps": [
+      "Step 1: Create a domain with color '#3B82F6' (blue)",
+      "Step 2: Create a project in that domain",
+      "Step 3: Verify the sidebar domain square is blue",
+      "Step 4: Navigate to Projects \u2014 verify the project card border/accent uses blue",
+      "Step 5: Open the project in kanban view \u2014 verify column headers use blue accents",
+      "Step 6: Navigate to Cockpit \u2014 verify time blocks for this domain are filled with blue"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "style",
+    "description": "Capacity bar visual: horizontal bar with green/amber/red gradient and percentage label",
+    "steps": [
+      "Step 1: Navigate to the Cockpit day view with a daily plan",
+      "Step 2: Verify the capacity bar is visible with committed/available minute labels",
+      "Step 3: With low commitment, verify the bar is green",
+      "Step 4: Take a screenshot to confirm clean styling with no overflow or layout issues"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "style",
+    "description": "Kanban board: proper card styling with domain color accent, task title, estimate chip, and drag handle",
+    "steps": [
+      "Step 1: Navigate to a project's kanban view with several tasks",
+      "Step 2: Verify each task card shows the title clearly",
+      "Step 3: Verify tasks with estimates show an estimate chip (e.g., '45m')",
+      "Step 4: Verify cards have visual drag handles or drag affordance",
+      "Step 5: Take a screenshot and verify clean layout with no overflow"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "style",
+    "description": "Time block vertical timeline: blocks display with domain colors, start/end times, theme labels, and task list within each block",
+    "steps": [
+      "Step 1: Create a daily plan with 3 time blocks in different domains",
+      "Step 2: Assign tasks to each block",
+      "Step 3: Navigate to the Cockpit day view",
+      "Step 4: Verify each block shows: domain color fill, start-end time labels, theme label, and listed tasks",
+      "Step 5: Verify calendar events appear as distinct gray locked bars"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "style",
+    "description": "Drag-and-drop visual feedback: hover states on drop targets, card lift animation during drag, and visual insertion indicator",
+    "steps": [
+      "Step 1: Navigate to a project list view with multiple tasks",
+      "Step 2: Begin dragging a task",
+      "Step 3: Verify the dragged card lifts visually (shadow, slight scale)",
+      "Step 4: Hover over different positions \u2014 verify insertion indicator appears",
+      "Step 5: Drop the task \u2014 verify smooth animation to final position"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "cockpit",
+    "description": "Block execution end-of-block: when all tasks in a block are complete, offer options \u2014 pull another task, end block early, or process inbox",
+    "steps": [
+      "Step 1: Create a daily plan with a time block containing 2 tasks",
+      "Step 2: Start the time block",
+      "Step 3: Complete both tasks via checkboxes",
+      "Step 4: Verify 'All tasks complete' options appear: pull another task, end block early, process inbox",
+      "Step 5: Select 'Pull another task' \u2014 verify a task picker appears with available tasks",
+      "Step 6: Select a task and verify it's added to the current block"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "projects",
+    "description": "Kanban view: clicking a task card opens a detail popup showing title, notes, estimate, due date, tags, and status",
+    "steps": [
+      "Step 1: Create a task with title, notes, estimated_minutes, due_date, and tags",
+      "Step 2: Navigate to the project's kanban view",
+      "Step 3: Click on the task card",
+      "Step 4: Verify a detail popup or side panel opens",
+      "Step 5: Verify it shows title, notes, estimate, due date, tags, and current status",
+      "Step 6: Edit the estimate from the popup and save",
+      "Step 7: Verify the change persists"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "settings",
+    "description": "Weekly theme templates: blocks within the same day cannot overlap \u2014 system prevents or warns on time overlap",
+    "steps": [
+      "Step 1: Navigate to Settings > Weekly Themes and edit a template",
+      "Step 2: Create a block on Monday from 9:00 to 11:00",
+      "Step 3: Attempt to create another block on Monday from 10:00 to 12:00 (overlapping)",
+      "Step 4: Verify the system prevents the overlap or shows a warning",
+      "Step 5: Create a non-overlapping block from 11:00 to 12:00 and verify it succeeds"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "cockpit",
+    "description": "Interruption logging creates a task_event entry for weekly review analysis",
+    "steps": [
+      "Step 1: Start a time block in the Cockpit",
+      "Step 2: Trigger an interruption log",
+      "Step 3: Verify an ad-hoc time block is created",
+      "Step 4: Query task_events and verify an interruption-related event is logged",
+      "Step 5: Verify the event includes the daily_plan_id for weekly review correlation"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "style",
+    "description": "Quick-capture overlay visual: slides in from the right, text field is focused, dimmed backdrop, and smooth dismiss animation",
+    "steps": [
+      "Step 1: Press Cmd+Shift+I to open the capture overlay",
+      "Step 2: Take a screenshot and verify the overlay is positioned correctly (right side or center)",
+      "Step 3: Verify the text field has auto-focus (cursor blinking)",
+      "Step 4: Verify the backdrop is dimmed but the underlying screen is still visible",
+      "Step 5: Submit text and verify smooth dismiss animation"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "cockpit",
+    "description": "Build Your Day: Available Tasks panel shows tasks due today, rescheduled tasks, and overdue tasks for dragging into time blocks",
+    "steps": [
+      "Step 1: Create tasks with due_date = today, tasks rescheduled from yesterday, and overdue tasks",
+      "Step 2: Navigate to Cockpit Stage 4 (Build Your Day)",
+      "Step 3: Verify an 'Available Tasks' panel is visible alongside the timeline",
+      "Step 4: Verify the panel lists due-today tasks, rescheduled tasks, and overdue tasks",
+      "Step 5: Verify each task shows its estimate and domain color",
+      "Step 6: Drag a task from the panel into a time block",
+      "Step 7: Verify the task is removed from the Available panel and appears in the block"
+    ],
+    "passes": true,
+    "phase": 2
+  },
+  {
+    "category": "projects",
+    "description": "Timeline/Gantt view: horizontal task bars with length based on estimated_minutes, TODAY marker line, and dependency arrows",
+    "steps": [
+      "Step 1: Create a project with 5 tasks having different estimated_minutes and due_dates",
+      "Step 2: Set dependencies: task C depends on task A, task D depends on task B",
+      "Step 3: Switch to Timeline view",
+      "Step 4: Verify horizontal bars render for each task",
+      "Step 5: Verify bar lengths correspond to estimated_minutes or date ranges",
+      "Step 6: Verify a TODAY marker line is visible",
+      "Step 7: Verify dependency arrows connect task A to task C and task B to task D"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "projects",
+    "description": "Timeline: drag connector dots to create task dependencies \u2014 adds to depends_on JSON array",
+    "steps": [
+      "Step 1: Navigate to a project's timeline view with tasks",
+      "Step 2: Locate the connector dots on a task bar",
+      "Step 3: Drag from task A's output dot to task B's input dot",
+      "Step 4: Verify a dependency arrow appears connecting A to B",
+      "Step 5: Query the API \u2014 verify task B's depends_on array contains task A's ID"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "projects",
+    "description": "Timeline: circular dependency detection \u2014 prevents creating a dependency that would form a cycle and shows error with full cycle path",
+    "steps": [
+      "Step 1: Create dependencies: A \u2192 B \u2192 C",
+      "Step 2: Attempt to create dependency C \u2192 A (would create A \u2192 B \u2192 C \u2192 A cycle)",
+      "Step 3: Verify the system rejects the dependency",
+      "Step 4: Verify an error message shows the full cycle path: A \u2192 B \u2192 C \u2192 A"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "projects",
+    "description": "Timeline: remove a dependency by clicking the arrow, then confirming removal",
+    "steps": [
+      "Step 1: Navigate to timeline view with existing dependencies",
+      "Step 2: Click on a dependency arrow",
+      "Step 3: Confirm removal",
+      "Step 4: Verify the arrow disappears",
+      "Step 5: Query the API \u2014 verify the depends_on array no longer contains the removed dependency"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "projects",
+    "description": "Timeline: material-blocked tasks shown with dashed pattern overlay on the task bar",
+    "steps": [
+      "Step 1: Create a project with tasks and materials",
+      "Step 2: Set a material's blocks_tasks to include a task ID with material status = 'needed'",
+      "Step 3: Navigate to the timeline view",
+      "Step 4: Verify the blocked task bar has a dashed/striped pattern indicating material blocking",
+      "Step 5: Change the material status to 'acquired'",
+      "Step 6: Refresh and verify the dashed pattern is removed from the task bar"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "projects",
+    "description": "Materials view: table with Name, Qty, $/Unit, Total (computed), Source, Status, Blocks count, with budget summary footer and inline editing",
+    "steps": [
+      "Step 1: Create a project and add 4 materials via API: '2x4 lumber' (qty 12, $4/ea), 'Polycarbonate panels' (qty 4, $30/ea), 'Screws' (qty 100, $0.05/ea), 'Ridge beam' (qty 1, $25/ea)",
+      "Step 2: Link 2 materials to blocking tasks via blocks_tasks",
+      "Step 3: Switch to Materials view in the project",
+      "Step 4: Verify the table shows all 4 materials with columns: Name, Qty, $/Unit, Total, Source, Status, Blocks",
+      "Step 5: Verify 'Total' column computes correctly (e.g., 12 \u00d7 $4 = $48)",
+      "Step 6: Verify a budget summary footer shows total cost across all materials",
+      "Step 7: Verify 'Blocks' column shows task count (e.g., '2 tasks' for materials with blocks_tasks)",
+      "Step 8: Click to inline-edit the '2x4 lumber' quantity from 12 to 20",
+      "Step 9: Verify the Total updates to $80 and the budget summary recalculates",
+      "Step 10: Change a material's status from 'needed' to 'ordered' and verify it persists"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "projects",
+    "description": "Materials: changing status to 'acquired' re-evaluates blocked tasks and updates visual unblock indicators",
+    "steps": [
+      "Step 1: Create a material with status 'needed' that blocks 2 tasks",
+      "Step 2: Navigate to the project \u2014 verify the 2 tasks show a 'blocked by material' indicator",
+      "Step 3: Change the material status to 'acquired'",
+      "Step 4: Verify the material status updates in the materials view",
+      "Step 5: Navigate to the task list \u2014 verify the 'blocked' indicators are removed from both tasks"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "projects",
+    "description": "Materials: cycle status through needed \u2192 ordered \u2192 acquired via inline status toggle",
+    "steps": [
+      "Step 1: Navigate to a project's materials view",
+      "Step 2: Click the status field on a material with status 'needed'",
+      "Step 3: Change to 'ordered' \u2014 verify status updates",
+      "Step 4: Change to 'acquired' \u2014 verify status updates",
+      "Step 5: Verify each status change persists via API"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "tags",
+    "description": "Tag CRUD: create, read, update, and delete tags with name and optional color",
+    "steps": [
+      "Step 1: Send POST /api/tags with {name: 'errands', color: '#F59E0B'}",
+      "Step 2: Verify response has ULID id, name, and color",
+      "Step 3: Send GET /api/tags and verify the tag appears",
+      "Step 4: Send PATCH /api/tags/:id with {name: 'errand-runs'}",
+      "Step 5: Send DELETE /api/tags/:id and verify it's soft-deleted"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "tags",
+    "description": "Tag picker on task detail: select and apply tags to a task, creating task_tags junction rows",
+    "steps": [
+      "Step 1: Create tags: 'computer', 'errands', 'calls'",
+      "Step 2: Create a task in a project",
+      "Step 3: Open the task detail view",
+      "Step 4: Click the tag picker",
+      "Step 5: Select 'computer' and 'errands'",
+      "Step 6: Verify both tags appear on the task",
+      "Step 7: Query GET /api/tasks/:id \u2014 verify tags are associated"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "tags",
+    "description": "Apply multiple tags to tasks and verify tags display on task cards in list and kanban views",
+    "steps": [
+      "Step 1: Create tags with different colors",
+      "Step 2: Apply tags to several tasks across different projects",
+      "Step 3: Navigate to a project list view \u2014 verify tag badges appear on task cards",
+      "Step 4: Switch to kanban view \u2014 verify tag badges appear on kanban cards"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "tags",
+    "description": "Cross-domain tag filtering: filter tasks by tag across all domains with AND logic for multiple tags",
+    "steps": [
+      "Step 1: Create tasks in different domains, some tagged 'computer', some 'errands', some both",
+      "Step 2: Navigate to a global task view or use tag filter",
+      "Step 3: Filter by tag 'computer' \u2014 verify all tasks tagged 'computer' appear regardless of domain",
+      "Step 4: Add second filter 'errands' (AND logic) \u2014 verify only tasks with BOTH tags appear",
+      "Step 5: Clear filters \u2014 verify all tasks are shown again"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "search",
+    "description": "FTS5 full-text search across tasks: searching by keyword returns matching tasks with highlighted results",
+    "steps": [
+      "Step 1: Create tasks with titles: 'Write API documentation', 'Review API endpoints', 'Build greenhouse frame'",
+      "Step 2: Navigate to the global search bar",
+      "Step 3: Type 'API'",
+      "Step 4: Verify both API-related tasks appear in results",
+      "Step 5: Type 'greenhouse' \u2014 verify only the greenhouse task appears"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "search",
+    "description": "FTS5 search across projects and inbox items: results grouped by entity type",
+    "steps": [
+      "Step 1: Create a project named 'Greenhouse Build' with description containing 'polycarbonate panels'",
+      "Step 2: Create an inbox item with raw_text containing 'polycarbonate'",
+      "Step 3: Create a task with title containing 'polycarbonate installation'",
+      "Step 4: Search for 'polycarbonate' in the global search",
+      "Step 5: Verify results include the project, inbox item, and task",
+      "Step 6: Verify results are grouped by entity type (Tasks, Projects, Inbox Items)"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "search",
+    "description": "Global search bar in sidebar: clicking opens search, results show domain color badges and link to entity detail views",
+    "steps": [
+      "Step 1: Click the search bar in the sidebar",
+      "Step 2: Type a search query",
+      "Step 3: Verify results appear with domain color badges next to each result",
+      "Step 4: Click a search result",
+      "Step 5: Verify navigation to the entity's detail view (task in its project, inbox item in inbox, etc.)"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "search",
+    "description": "FTS5 search returns results within 300ms for queries across all entity types",
+    "steps": [
+      "Step 1: Populate the database with at least 50 tasks, 10 projects, 20 inbox items, and 10 materials",
+      "Step 2: Perform a search query",
+      "Step 3: Measure the time from search submission to results display",
+      "Step 4: Verify results appear within 300ms"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "recurring",
+    "description": "Create a recurring task with RRULE: FREQ=WEEKLY;BYDAY=MO,WE,FR \u2014 task has recurrence_rule field set",
+    "steps": [
+      "Step 1: Create a task in a project",
+      "Step 2: Set recurrence_rule to 'FREQ=WEEKLY;BYDAY=MO,WE,FR'",
+      "Step 3: Verify the task is saved with the recurrence rule",
+      "Step 4: Verify the task UI shows a recurrence indicator"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "recurring",
+    "description": "Clone-on-complete: completing a recurring task generates the next instance with new ULID, correct next due_date, and recurrence_parent_id",
+    "steps": [
+      "Step 1: Create a recurring task with RRULE 'FREQ=WEEKLY;BYDAY=MO' and due_date = next Monday",
+      "Step 2: Mark the task as done",
+      "Step 3: Verify the original task has status = 'done' and completed_at set",
+      "Step 4: Verify a new task was created with a new ULID",
+      "Step 5: Verify the new task has recurrence_parent_id pointing to the original",
+      "Step 6: Verify the new task's due_date is the following Monday",
+      "Step 7: Verify the new task inherits title, project_id, estimated_minutes, and notes",
+      "Step 8: Verify the new task has status = 'backlog'"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "recurring",
+    "description": "Stop recurrence: clearing recurrence_rule on the template task stops generating new instances",
+    "steps": [
+      "Step 1: Create a recurring task with an RRULE",
+      "Step 2: Clear the recurrence_rule (set to null)",
+      "Step 3: Mark the task as done",
+      "Step 4: Verify NO new instance is generated",
+      "Step 5: Verify any existing pending instance remains unchanged"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "recurring",
+    "description": "Recurrence supports FREQ=DAILY and FREQ=MONTHLY;BYMONTHDAY patterns",
+    "steps": [
+      "Step 1: Create a task with RRULE 'FREQ=DAILY' and due_date = today",
+      "Step 2: Complete it and verify next instance has due_date = tomorrow",
+      "Step 3: Create a task with RRULE 'FREQ=MONTHLY;BYMONTHDAY=15' and due_date = March 15",
+      "Step 4: Complete it and verify next instance has due_date = April 15"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "inbox",
+    "description": "Voice capture processing: shows editable transcription, audio playback, and first sentence auto-fills task title",
+    "steps": [
+      "Step 1: Create an inbox item with type='voice', raw_text = 'Drip irrigation leak on bed 3. Need replacement coupling.', audio_path set",
+      "Step 2: Navigate to inbox and process this item",
+      "Step 3: Verify the processing card shows the transcription text (editable)",
+      "Step 4: Verify an audio playback control is visible",
+      "Step 5: Select 'Create Task'",
+      "Step 6: Verify the first sentence auto-fills the task title",
+      "Step 7: Verify remaining sentences populate the task notes"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "inbox",
+    "description": "Photo capture processing: shows photo, OCR text, and 'Link to Materials' action that searches materials",
+    "steps": [
+      "Step 1: Create a material 'Polycarbonate panels' in a project",
+      "Step 2: Create an inbox item with type='photo', ocr_text='SUNTUF Polycarbonate Panel $32.97'",
+      "Step 3: Navigate to inbox and process this item",
+      "Step 4: Verify the processing card shows the photo and OCR text",
+      "Step 5: Click 'Link to Materials'",
+      "Step 6: Verify the system searches materials and shows 'Polycarbonate panels' as a match",
+      "Step 7: Link the item to the material and verify the material's unit_cost is updated"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "inbox",
+    "description": "Processing flow for voice items: edit transcription before creating task",
+    "steps": [
+      "Step 1: Create a voice inbox item with imperfect transcription",
+      "Step 2: Process the item",
+      "Step 3: Edit the transcription text to correct errors",
+      "Step 4: Create a task from the corrected text",
+      "Step 5: Verify the task title uses the corrected text"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "settings",
+    "description": "Seasonal configuration: enter USDA planting zone, last frost date, and first frost date in Settings",
+    "steps": [
+      "Step 1: Navigate to Settings > Seasonal Config",
+      "Step 2: Enter planting zone '7b'",
+      "Step 3: Enter last frost date 'April 15'",
+      "Step 4: Enter first frost date 'October 20'",
+      "Step 5: Save and verify seasonal_config rows are created for each key"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "settings",
+    "description": "Seasonal configuration: year-specific overrides \u2014 add an override for a specific year that takes precedence",
+    "steps": [
+      "Step 1: Set default last frost date to April 15",
+      "Step 2: Add a year-specific override: last frost date for 2026 = May 1",
+      "Step 3: Verify the override row exists with year = 2026",
+      "Step 4: Verify queries for 2026's last frost date return May 1",
+      "Step 5: Verify queries for 2027 still return the default April 15"
+    ],
+    "passes": true,
+    "phase": 3
+  },
+  {
+    "category": "review",
+    "description": "Weekly review: pre-computed digest shows completed tasks per domain (bar chart), overdue count, stalled project count, inbox backlog, upcoming deadlines",
+    "steps": [
+      "Step 1: Create completed tasks across 3 domains over the past week",
+      "Step 2: Create overdue tasks (due_date < today)",
+      "Step 3: Create stalled projects (last_touched_at > 7 days ago)",
+      "Step 4: Leave some inbox items unprocessed",
+      "Step 5: Create tasks with due_date within next 14 days",
+      "Step 6: Navigate to the Review screen",
+      "Step 7: Verify the digest overview shows: completed task counts per domain, overdue count, stalled project count, inbox backlog count, upcoming deadlines list"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "review",
+    "description": "Weekly review: overdue triage with forced decisions \u2014 each overdue task must be addressed before proceeding",
+    "steps": [
+      "Step 1: Create 4 overdue tasks across 2 domains",
+      "Step 2: Navigate to the Review screen and start the overdue triage section",
+      "Step 3: Verify all 4 overdue tasks are listed with domain color badges",
+      "Step 4: For each task, verify 4 options: reschedule (date picker), remove due date, drop, mark done",
+      "Step 5: Reschedule task 1 to next Monday",
+      "Step 6: Remove due date from task 2",
+      "Step 7: Drop task 3",
+      "Step 8: Mark task 4 as done",
+      "Step 9: Verify the user cannot proceed to the next section until all tasks are addressed",
+      "Step 10: Verify task_events are logged for each decision"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "review",
+    "description": "Weekly review: overdue tasks grouped by domain when 5+ overdue items exist",
+    "steps": [
+      "Step 1: Create 6 overdue tasks across 3 domains (2 per domain)",
+      "Step 2: Navigate to the Review overdue triage section",
+      "Step 3: Verify tasks are grouped by domain with domain color headers",
+      "Step 4: Verify each group shows its domain name and task count"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "review",
+    "description": "Weekly review: stalled project decisions \u2014 Acknowledge, Pause (someday), Archive, Add context note, Create follow-up task",
+    "steps": [
+      "Step 1: Create 3 active projects with last_touched_at older than 7 days",
+      "Step 2: Navigate to the Review stalled projects section",
+      "Step 3: Verify all 3 projects are listed with last_touched_at dates",
+      "Step 4: Select 'Acknowledge' for project 1 \u2014 verify it's dismissed",
+      "Step 5: Select 'Pause' for project 2 \u2014 verify status changes to 'someday'",
+      "Step 6: Select 'Add context note' for project 3 \u2014 enter a note",
+      "Step 7: Verify the context note is saved to the project's last_context_note",
+      "Step 8: Verify the user can also 'Create follow-up task' for a stalled project"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "review",
+    "description": "Weekly review: horizon check \u2014 domain balance pie chart from time_blocks duration grouped by domain_id for past 7 days",
+    "steps": [
+      "Step 1: Create time blocks over the past 7 days distributed across domains",
+      "Step 2: Navigate to the Review horizon check section",
+      "Step 3: Verify a domain balance visualization (pie/donut chart) is displayed",
+      "Step 4: Verify each domain's percentage matches the time_blocks data",
+      "Step 5: Verify a reflection text area is available for free-form notes"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "review",
+    "description": "Weekly review: someday/maybe scan \u2014 lists all projects with status='someday' with actions: Keep, Promote to Active, Archive",
+    "steps": [
+      "Step 1: Create 3 projects with status = 'someday'",
+      "Step 2: Navigate to the Review someday/maybe section",
+      "Step 3: Verify all 3 someday projects are listed with name, domain, creation date, task count",
+      "Step 4: Select 'Keep' for project 1 \u2014 verify it stays as someday",
+      "Step 5: Select 'Promote to Active' for project 2 \u2014 verify status changes to 'active'",
+      "Step 6: Select 'Archive' for project 3 \u2014 verify status changes to 'archived'"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "review",
+    "description": "Weekly review: completion timestamp recorded and displayed on Review screen",
+    "steps": [
+      "Step 1: Complete all sections of the weekly review",
+      "Step 2: Verify a completion timestamp is recorded",
+      "Step 3: Navigate away and return to the Review screen",
+      "Step 4: Verify the screen shows 'Last reviewed: [date]'"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "review",
+    "description": "Weekly review: next week theme adjustments \u2014 view/edit template blocks for the coming week without modifying the base template",
+    "steps": [
+      "Step 1: Set up an active weekly theme template",
+      "Step 2: Navigate to the Review and find the theme adjustment section",
+      "Step 3: View the upcoming week's blocks from the template",
+      "Step 4: Make an adjustment (e.g., swap a block's domain for one day)",
+      "Step 5: Verify the adjustment creates a day-specific override",
+      "Step 6: Verify the base template remains unchanged"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "review",
+    "description": "Full weekly review end-to-end workflow: digest \u2192 overdue triage \u2192 stalled projects \u2192 horizon check \u2192 someday/maybe \u2192 theme adjustments \u2192 completion",
+    "steps": [
+      "Step 1: Set up data: completed tasks, overdue tasks, stalled projects, someday projects, time blocks",
+      "Step 2: Navigate to the Review screen",
+      "Step 3: View the digest overview with all metrics",
+      "Step 4: Enter overdue triage \u2014 make forced decisions on all overdue tasks",
+      "Step 5: Enter stalled projects \u2014 acknowledge or take action on each",
+      "Step 6: Enter horizon check \u2014 view domain balance chart and write reflection",
+      "Step 7: Enter someday/maybe scan \u2014 decide on each someday project",
+      "Step 8: View/adjust next week's theme blocks",
+      "Step 9: Complete the review",
+      "Step 10: Verify completion timestamp is set",
+      "Step 11: Verify all decisions resulted in appropriate database updates and task_events"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "review",
+    "description": "Weekly review: overdue triage cannot be skipped \u2014 user must address every overdue task before proceeding",
+    "steps": [
+      "Step 1: Create 3 overdue tasks",
+      "Step 2: Navigate to the overdue triage section",
+      "Step 3: Address only 2 of 3 tasks",
+      "Step 4: Attempt to proceed to the next section",
+      "Step 5: Verify the system prevents proceeding until all tasks are addressed"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "data-model",
+    "description": "FTS5 virtual tables exist for tasks, projects, inbox_items, and materials with correct content columns",
+    "steps": [
+      "Step 1: Query database to verify tasks_fts exists with columns: title, notes, kanban_column",
+      "Step 2: Verify projects_fts exists with columns: name, description, last_context_note",
+      "Step 3: Verify inbox_items_fts exists with columns: raw_text, ocr_text, quick_note",
+      "Step 4: Verify materials_fts exists with columns: name, source, notes"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "data-model",
+    "description": "Task events are logged for all major task mutations: created, status_changed, completed, rescheduled, estimate_changed",
+    "steps": [
+      "Step 1: Create a task \u2014 verify 'created' event logged",
+      "Step 2: Change task status \u2014 verify 'status_changed' event with old_value and new_value",
+      "Step 3: Mark task as done \u2014 verify 'completed' event",
+      "Step 4: Reschedule the task via cockpit \u2014 verify 'rescheduled' event",
+      "Step 5: Change estimated_minutes \u2014 verify 'estimate_changed' event"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "settings",
+    "description": "Sync status indicator shows green dot when peer found via mDNS, gray dot when no peers",
+    "steps": [
+      "Step 1: Navigate to the app with no other devices on the network",
+      "Step 2: Verify the sync indicator in the sidebar shows a gray dot with 'No peers' text",
+      "Step 3: Verify the sync indicator is visible and not clipped or hidden"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "settings",
+    "description": "Settings: Sync and Devices section shows connected peers, last sync timestamp, and device management",
+    "steps": [
+      "Step 1: Navigate to Settings > Sync & Devices",
+      "Step 2: Verify the section shows a 'Connected Peers' area (empty if no peers)",
+      "Step 3: Verify a 'Last sync' timestamp is displayed",
+      "Step 4: Verify device management options are visible (even if no paired devices)"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "review",
+    "description": "Weekly review: stalled project 'Archive' action changes project status to archived and removes it from active project lists",
+    "steps": [
+      "Step 1: Create an active project with last_touched_at older than 7 days",
+      "Step 2: Navigate to the Review stalled projects section",
+      "Step 3: Select 'Archive' for the stalled project",
+      "Step 4: Verify the project's status changes to 'archived'",
+      "Step 5: Navigate to the Projects screen and verify the project no longer appears in the active list"
+    ],
+    "passes": true,
+    "phase": 4
+  },
+  {
+    "category": "recovery",
+    "description": "Catch-Up Mode activates when user opens app after 1-6 days of absence \u2014 calm tone, skippable inbox, compact overdue triage",
+    "steps": [
+      "Step 1: Set up data simulating 3 days of absence: no daily_plans for past 3 days",
+      "Step 2: Create 8 overdue tasks across 3 domains",
+      "Step 3: Create 5 unprocessed inbox items",
+      "Step 4: Navigate to the Cockpit",
+      "Step 5: Verify the app detects the absence and activates Catch-Up Mode",
+      "Step 6: Verify the tone is calm and non-judgmental \u2014 no guilt language like 'You missed 3 days'",
+      "Step 7: Verify inbox processing step is present but has a 'Skip' option",
+      "Step 8: Verify overdue triage is compact with one-tap actions grouped by domain",
+      "Step 9: Process overdue tasks using quick actions (reschedule, backlog, drop)",
+      "Step 10: Verify a stalled project scan is presented after overdue triage",
+      "Step 11: Complete the catch-up flow and verify the system transitions to Build Your Day"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "recovery",
+    "description": "Catch-Up Mode: compact overdue triage with one-tap domain-grouped actions, completable in under 10 minutes",
+    "steps": [
+      "Step 1: Create 15 overdue tasks across 4 domains",
+      "Step 2: Simulate 3-day absence and enter Catch-Up Mode",
+      "Step 3: Verify overdue tasks are grouped by domain",
+      "Step 4: Verify one-tap actions: reschedule, backlog, drop",
+      "Step 5: Process all 15 tasks",
+      "Step 6: Verify the entire flow can be completed efficiently"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "recovery",
+    "description": "Fresh Start Mode activates for 7+ day absence \u2014 bulk overdue sweep, project health check, simplified day plan",
+    "steps": [
+      "Step 1: Set up data simulating 10 days of absence with 20 overdue tasks and 15 unprocessed inbox items",
+      "Step 2: Create 5 active projects with last_touched_at older than 10 days",
+      "Step 3: Navigate to the Cockpit",
+      "Step 4: Verify Fresh Start Mode activates (not Catch-Up Mode)",
+      "Step 5: Verify the tone is welcoming \u2014 'Welcome back' style, not guilt-inducing",
+      "Step 6: Verify bulk overdue resolution: one-action sweep moves non-deadline tasks to project backlogs",
+      "Step 7: Verify hard-deadline tasks are preserved for individual triage",
+      "Step 8: Verify project health check: checkbox list showing each active project with Keep/Pause options",
+      "Step 9: Verify inbox deferral: option to defer inbox processing with a suggested processing time",
+      "Step 10: Complete the fresh start flow and verify a simplified day plan is created",
+      "Step 11: Verify no retroactive daily_plans were created for missed days"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "recovery",
+    "description": "Fresh Start Mode: bulk sweep moves all non-deadline overdue tasks to project backlogs in one action",
+    "steps": [
+      "Step 1: Create 20 overdue tasks \u2014 5 with due dates (hard deadlines), 15 without",
+      "Step 2: Enter Fresh Start Mode",
+      "Step 3: Use the bulk sweep action",
+      "Step 4: Verify the 15 non-deadline tasks are returned to their project backlogs",
+      "Step 5: Verify the 5 deadline tasks remain flagged for individual triage"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "recovery",
+    "description": "No retroactive daily plans: system only creates daily plans for today and forward, never for missed days",
+    "steps": [
+      "Step 1: Simulate a 5-day absence",
+      "Step 2: Open the app and complete catch-up or fresh start",
+      "Step 3: Verify only one daily_plan was created (for today)",
+      "Step 4: Verify no daily_plan rows exist for the missed days"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "style",
+    "description": "Full keyboard navigation: all primary screens, buttons, and interactive elements are accessible via Tab/Shift+Tab/Enter/Escape",
+    "steps": [
+      "Step 1: Navigate to the app and press Tab",
+      "Step 2: Verify focus moves to the first sidebar navigation item with a visible focus indicator",
+      "Step 3: Press Tab repeatedly \u2014 verify focus moves through all sidebar items in order",
+      "Step 4: Press Enter on the Projects nav item \u2014 verify the Projects screen loads",
+      "Step 5: Press Tab \u2014 verify focus moves into the main content area (domain tabs, project cards)",
+      "Step 6: Press Enter on a project card \u2014 verify the project opens",
+      "Step 7: Press Tab through task items \u2014 verify each has a focus indicator",
+      "Step 8: Press Escape to close modals or return to previous view",
+      "Step 9: Navigate to Inbox and Tab to the capture field \u2014 type and press Enter to create an item",
+      "Step 10: Verify Shift+Tab moves focus backwards through the interface"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "style",
+    "description": "Color contrast meets WCAG 2.1 AA minimum (4.5:1 for normal text, 3:1 for large text) across all screens",
+    "steps": [
+      "Step 1: Navigate to the Inbox screen and take a screenshot",
+      "Step 2: Verify text elements have sufficient contrast against their backgrounds",
+      "Step 3: Navigate to the Cockpit and verify contrast on the capacity bar labels",
+      "Step 4: Navigate to Projects and verify contrast on project cards and task text",
+      "Step 5: Verify domain color badges have readable text"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "style",
+    "description": "Responsive sidebar: collapses to icons-only when browser window is narrower than 1024px",
+    "steps": [
+      "Step 1: Open the app in a wide browser window (>1024px)",
+      "Step 2: Verify the sidebar shows full labels (Inbox, Cockpit, Projects, Review, Settings)",
+      "Step 3: Resize the window to under 1024px",
+      "Step 4: Verify the sidebar collapses to show only icons",
+      "Step 5: Verify navigation still works by clicking icons"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "style",
+    "description": "Loading states: skeleton screens or spinners display while data is being fetched",
+    "steps": [
+      "Step 1: Navigate to the Projects screen",
+      "Step 2: Verify a loading state (skeleton or spinner) appears briefly before content renders",
+      "Step 3: Navigate to the Cockpit",
+      "Step 4: Verify appropriate loading states during data fetch"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "style",
+    "description": "Error states: display user-friendly error messages when API calls fail, with retry options",
+    "steps": [
+      "Step 1: Simulate a backend API failure (e.g., stop the server briefly)",
+      "Step 2: Attempt an action in the UI (e.g., create a task)",
+      "Step 3: Verify a user-friendly error message appears (not a raw error or blank screen)",
+      "Step 4: Verify a retry option is available"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "style",
+    "description": "Hover states and focus indicators: all buttons, links, cards, and interactive elements have visible hover and focus states",
+    "steps": [
+      "Step 1: Hover over sidebar navigation items \u2014 verify hover state (background change, color shift)",
+      "Step 2: Hover over project cards \u2014 verify hover state",
+      "Step 3: Hover over task checkboxes \u2014 verify hover indicator",
+      "Step 4: Tab through interactive elements \u2014 verify focus ring/outline is visible"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "onboarding",
+    "description": "'I have another device' option at first launch offers device pairing flow instead of fresh setup",
+    "steps": [
+      "Step 1: Start the app with a fresh database",
+      "Step 2: Verify the setup wizard's first screen includes an 'I have another device' option",
+      "Step 3: Click the option",
+      "Step 4: Verify a device pairing flow initiates (6-digit code entry or display)"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "settings",
+    "description": "Settings: database size display shows current SQLite file size",
+    "steps": [
+      "Step 1: Navigate to Settings > Data Management",
+      "Step 2: Verify the current database size is displayed (e.g., '2.4 MB')",
+      "Step 3: Add some data (create tasks, projects)",
+      "Step 4: Verify the size display updates"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "settings",
+    "description": "Settings: JSON data export \u2014 export all data as JSON file for backup",
+    "steps": [
+      "Step 1: Navigate to Settings > Data Management",
+      "Step 2: Click 'Export Data'",
+      "Step 3: Verify a JSON file is downloaded or saved",
+      "Step 4: Open the JSON file and verify it contains domains, projects, tasks, and other entity data"
+    ],
+    "passes": true,
+    "phase": 5
+  },
+  {
+    "category": "settings",
+    "description": "Settings: soft-delete purge \u2014 purge rows with deleted_at older than 90 days",
+    "steps": [
+      "Step 1: Create and soft-delete some tasks, setting deleted_at to 100 days ago",
+      "Step 2: Navigate to Settings > Data Management",
+      "Step 3: Run the purge operation",
+      "Step 4: Verify the soft-deleted rows older than 90 days have been hard-deleted",
+      "Step 5: Verify recently soft-deleted rows (under 90 days) remain untouched"
+    ],
+    "passes": true,
+    "phase": 5
+  }
+]
