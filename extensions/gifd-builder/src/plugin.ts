@@ -5,10 +5,10 @@ import type { OpenClawPluginApi } from "../api.js";
 // and the forthcoming docs/groundwork/specs/<date>-gifd-builder-design.md).
 //
 // Planned shape:
-//   - registerTool: gifd_builder (clarify -> plan -> edit -> build -> respond loop)
+//   - registerTool: gifd_builder (handler invokes api.runtime.agent.runEmbeddedPiAgent)
 //   - registerHttpRoute: /plugins/gifd-builder/drafts/* (accept, discard, status)
-//   - PreToolUse hooks: enforce draft-branch boundary, redaction allowlist
-//   - PostToolUse hooks: append to intent log (SQLite-backed)
+//   - api.on("before_tool_call"): enforce draft-branch boundary, glob whitelist, cross-file SQL gate
+//   - api.on("after_tool_call"): append to intent log + content exfiltration scan
 export function registerGifdBuilderPlugin(api: OpenClawPluginApi): void {
   api.logger.info("gifd-builder plugin registered (scaffold; no tools active yet)");
 }
