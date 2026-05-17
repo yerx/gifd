@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.core.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "composite": true,
+    "declaration": true,
+    "noEmit": false
+  },
+  "include": ["index.ts", "api.ts", "src/**/*.ts"],
+  "exclude": ["**/*.test.ts", "dist", "node_modules"]
+}

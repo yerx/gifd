@@ -1,0 +1,59 @@
+{
+  "id": "gifd-builder",
+  "name": "Gifd App Builder",
+  "description": "Customize Gifd's apps from chat. The agent edits code in a draft sandbox; user accepts or discards.",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": ["gifd_builder"]
+  },
+  "toolMetadata": {
+    "gifd_builder": {
+      "optional": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "groundworkRoot": {
+        "type": "string",
+        "description": "Absolute path to the groundwork-web app directory. Defaults to the workspace's apps/groundwork-web."
+      },
+      "draftsRoot": {
+        "type": "string",
+        "description": "Absolute path where draft worktrees are created. Defaults to <tmp>/gifd-drafts."
+      },
+      "models": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "codegen": {
+            "type": "string",
+            "default": "claude-opus-4-7",
+            "description": "Model used for code generation in drafts."
+          },
+          "clarify": {
+            "type": "string",
+            "default": "claude-haiku-4-5",
+            "description": "Model used for fast clarifying-question turns."
+          }
+        }
+      },
+      "tokenBudget": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "perSessionUsd": {
+            "type": "number",
+            "default": 5,
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Hard cap on LLM spend per draft session, in USD."
+          }
+        }
+      }
+    }
+  }
+}
